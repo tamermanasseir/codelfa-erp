@@ -1,34 +1,47 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('sales');
 
-  // 1. الفواتير والمبيعات
-  const [invoices, setInvoices] = useState([
-    { id: 1, client: 'شركة الأمل للمقاولات', amount: 4500, date: '2026-10-12', status: 'مدفوع' }
-  ]);
-  const [newClient, setNewClient] = useState('');
-  const [newAmount, setNewAmount] = useState('');
+  // تحميل البيانات من الذاكرة أو الاعتماد على البيانات الافتراضية
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [containers, setContainers] = useState<any[]>([]);
+  const [clients, setClients] = useState<any[]>([]);
 
-  // 2. الحاويات والشحن والاستيراد
-  const [containers, setContainers] = useState([
-    {
-      id: 1,
-      code: 'MSKU-98231',
-      country: 'الصين',
-      supplier: 'مصنع غوانغدونغ',
-      itemType: 'بورسلان 60x120',
-      sqm: 1440,
-      slabsCount: 720,
-      totalCost: 18500,
-      paidAmount: 12000,
-      remainingCost: 6500,
-      daysLeft: 12,
-      status: 'في الطريق'
-    }
-  ]);
+  useEffect(() => {
+    const savedInvoices = localStorage.getItem('codelfa_invoices');
+    const savedContainers = localStorage.getItem('codelfa_containers');
+    const savedClients = localStorage.getItem('codelfa_clients');
 
+    if (savedInvoices) setInvoices(JSON.parse(savedInvoices));
+    else setInvoices([{ id: 1, client: 'شركة الأمل للمقاولات', amount: 4500, date: '2026-10-12', status: 'مدفوع' }]);
+
+    if (savedContainers) setContainers(JSON.parse(savedContainers));
+    else setContainers([{ id: 1, code: 'MSKU-98231', country: 'الصين', supplier: 'مصنع غوانغدونغ', itemType: 'بورسلان 60x120', sqm: 1440, slabsCount: 720, totalCost: 18500, paidAmount: 12000, remainingCost: 6500, daysLeft: 12, status: 'في الطريق' }]);
+
+    if (savedClients) setClients(JSON.parse(savedClients));
+    else setClients([{ id: 1, name: 'أبو إيهاب (الميداني)', phone: '0590000000', city: 'الخليل', notes: 'التنسيق الميداني والخدمات' }]);
+  }, []);
+
+  // حفظ تلقائي عند أي تغيير
+  useEffect(() => {
+    if (invoices.length > 0) localStorage.setItem('codelfa_invoices', JSON.stringify(invoices));
+  }, [invoices]);
+
+  useEffect(() => {
+    if (containers.length > 0) localStorage.setItem('codelfa_containers', JSON.stringify(containers));
+  }, [containers]);
+
+  useEffect(() => {
+    if (clients.length > 0) localStorage.setItem('codelfa_clients', JSON.stringify(clients));
+  }, [clients]);
+
+  // مدخلات الفواتير
+  const [invClient, setInvClient] = useState('');
+  const [invAmount, setInvAmount] = useState('');
+
+  // مدخلات الحاويات
   const [cCode, setCCode] = useState('');
   const [cCountry, setCCountry] = useState('الصين');
   const [cSupplier, setCSupplier] = useState('');
@@ -39,92 +52,94 @@ export default function Home() {
   const [cPaidAmount, setCPaidAmount] = useState('');
   const [cDaysLeft, setCDaysLeft] = useState('');
 
-  // 3. العملاء
-  const [clients, setClients] = useState([
-    { id: 1, name: 'أبو إيهاب (الميداني)', phone: '0590000000', city: 'الخليل', notes: 'التنسيق الميداني والخدمات' }
-  ]);
-  const [newClientName, setNewClientName] = useState('');
-  const [newClientPhone, setNewClientPhone] = useState('');
+  // مدخلات العملاء
+  const [cliName, setCliName] = useState('');
+  const [cliPhone, setCliPhone] = useState('');
 
-  // دالة إضافة فاتورة
-  const handleAddInvoice = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newClient.trim() || !newAmount) return;
-    const numAmount = parseFloat(newAmount) || 0;
-    
-    setInvoices((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        client: newClient,
-        amount: numAmount,
-        date: new Date().toISOString().split('T')[0],
-        status: 'مُسجل'
-      }
-    ]);
-    setNewClient('');
-    setNewAmount('');
+  // إضافة فاتورة
+  const handleAddInvoice = () => {
+    if (!invClient.trim() || !invAmount) {
+      alert('يرجى تعبئة اسم العميل والمبلغ');
+      return;
+    }
+    const newInv = {
+      id: Date.now(),
+      client: invClient.trim(),
+      amount: parseFloat(invAmount) || 0,
+      date: new Date().toISOString().split('T')[0],
+      status: 'مُسجل'
+    };
+    setInvoices([newInv, ...invoices]);
+    setInvClient('');
+    setInvAmount('');
   };
 
-  // دالة إضافة حاوية
-  const handleAddContainer = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cCode.trim()) return;
+  // حذف فاتورة
+  const handleDeleteInvoice = (id: number) => {
+    setInvoices(invoices.filter(i => i.id !== id));
+  };
+
+  // إضافة حاوية
+  const handleAddContainer = () => {
+    if (!cCode.trim()) {
+      alert('يرجى إدخال رقم الحاوية');
+      return;
+    }
     const total = parseFloat(cTotalCost) || 0;
     const paid = parseFloat(cPaidAmount) || 0;
 
-    setContainers((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        code: cCode,
-        country: cCountry || 'الصين',
-        supplier: cSupplier || 'مصنع الصين',
-        itemType: cItemType || 'بورسلان',
-        sqm: parseFloat(cSqm) || 0,
-        slabsCount: parseInt(cSlabsCount) || 0,
-        totalCost: total,
-        paidAmount: paid,
-        remainingCost: total - paid,
-        daysLeft: parseInt(cDaysLeft) || 0,
-        status: 'قيد الشحن'
-      }
-    ]);
-
-    setCCode('');
-    setCSupplier('');
-    setCItemType('');
-    setCSqm('');
-    setCSlabsCount('');
-    setCTotalCost('');
-    setCPaidAmount('');
-    setCDaysLeft('');
+    const newCont = {
+      id: Date.now(),
+      code: cCode.trim(),
+      country: cCountry || 'الصين',
+      supplier: cSupplier || 'مصنع الصين',
+      itemType: cItemType || 'بورسلان',
+      sqm: parseFloat(cSqm) || 0,
+      slabsCount: parseInt(cSlabsCount) || 0,
+      totalCost: total,
+      paidAmount: paid,
+      remainingCost: total - paid,
+      daysLeft: parseInt(cDaysLeft) || 0,
+      status: 'قيد الشحن'
+    };
+    setContainers([newCont, ...containers]);
+    setCCode(''); setCSupplier(''); setCItemType(''); setCSqm('');
+    setCSlabsCount(''); setCTotalCost(''); setCPaidAmount(''); setCDaysLeft('');
   };
 
-  // دالة إضافة عميل
-  const handleAddClient = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newClientName.trim()) return;
-    setClients((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        name: newClientName,
-        phone: newClientPhone || '-',
-        city: 'الخليل',
-        notes: 'متابعة ميدانية'
-      }
-    ]);
-    setNewClientName('');
-    setNewClientPhone('');
+  // حذف حاوية
+  const handleDeleteContainer = (id: number) => {
+    setContainers(containers.filter(c => c.id !== id));
   };
 
-  // مجاميع وإحصائيات
-  const totalSales = invoices.reduce((sum, inv) => sum + inv.amount, 0);
-  const totalContainersCount = containers.length;
-  const totalChinaRemaining = containers.reduce((sum, c) => sum + c.remainingCost, 0);
-  const totalSqm = containers.reduce((sum, c) => sum + c.sqm, 0);
-  const totalSlabs = containers.reduce((sum, c) => sum + c.slabsCount, 0);
+  // إضافة عميل
+  const handleAddClient = () => {
+    if (!cliName.trim()) {
+      alert('يرجى كتابة اسم العميل');
+      return;
+    }
+    const newCli = {
+      id: Date.now(),
+      name: cliName.trim(),
+      phone: cliPhone || '-',
+      city: 'الخليل',
+      notes: 'متابعة ميدانية'
+    };
+    setClients([newCli, ...clients]);
+    setCliName('');
+    setCliPhone('');
+  };
+
+  // حذف عميل
+  const handleDeleteClient = (id: number) => {
+    setClients(clients.filter(c => c.id !== id));
+  };
+
+  // الحسابات
+  const totalSales = invoices.reduce((sum, i) => sum + (i.amount || 0), 0);
+  const totalChinaRemaining = containers.reduce((sum, c) => sum + (c.remainingCost || 0), 0);
+  const totalSqm = containers.reduce((sum, c) => sum + (c.sqm || 0), 0);
+  const totalSlabs = containers.reduce((sum, c) => sum + (c.slabsCount || 0), 0);
 
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', direction: 'rtl', minHeight: '100vh', backgroundColor: '#f1f5f9', color: '#0f172a' }}>
@@ -133,14 +148,14 @@ export default function Home() {
       <header style={{ backgroundColor: '#0f172a', color: '#fff', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '22px' }}>نظام Codelfa ERP</h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>إدارة المبيعات، الحاويات، والاستيراد من الصين (الخليل)</p>
+          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>إدارة المبيعات والحاويات والاستيراد (الخليل)</p>
         </div>
         <span style={{ backgroundColor: '#10b981', color: '#fff', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: 'bold' }}>
-          تفاعلي ⚡
+          تفاعلي ومحفوظ ⚡
         </span>
       </header>
 
-      {/* التنقل */}
+      {/* شريط التنقل */}
       <nav style={{ backgroundColor: '#1e293b', padding: '10px 24px', display: 'flex', gap: '10px', overflowX: 'auto' }}>
         <button onClick={() => setActiveTab('sales')} style={{ backgroundColor: activeTab === 'sales' ? '#2563eb' : '#334155', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
           📊 المبيعات والحسابات ({invoices.length})
@@ -155,7 +170,7 @@ export default function Home() {
 
       <main style={{ padding: '24px', maxWidth: '1250px', margin: '0 auto' }}>
 
-        {/* 1. قسم المبيعات */}
+        {/* 1. المبيعات */}
         {activeTab === 'sales' && (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
@@ -169,33 +184,32 @@ export default function Home() {
               </div>
             </div>
 
-            {/* نموذج إضافة فاتورة */}
             <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
               <h3 style={{ marginTop: 0, color: '#0f172a' }}>➕ إضافة فاتورة مبيعات جديدة</h3>
-              <form onSubmit={handleAddInvoice} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 <input
                   type="text"
                   placeholder="اسم العميل / الشركة"
-                  value={newClient}
-                  onChange={(e) => setNewClient(e.target.value)}
+                  value={invClient}
+                  onChange={(e) => setInvClient(e.target.value)}
                   style={{ flex: '1 1 200px', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                  required
                 />
                 <input
                   type="number"
                   placeholder="المبلغ ($)"
-                  value={newAmount}
-                  onChange={(e) => setNewAmount(e.target.value)}
+                  value={invAmount}
+                  onChange={(e) => setInvAmount(e.target.value)}
                   style={{ flex: '1 1 120px', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                  required
                 />
-                <button type="submit" style={{ backgroundColor: '#10b981', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                <button
+                  onClick={handleAddInvoice}
+                  type="button"
+                  style={{ backgroundColor: '#10b981', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
                   حفظ الفاتورة
                 </button>
-              </form>
+              </div>
             </div>
 
-            {/* جدول الفواتير */}
             <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
               <h3 style={{ marginTop: 0 }}>سجل الفواتير المسجلة</h3>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right' }}>
@@ -205,16 +219,20 @@ export default function Home() {
                     <th style={{ padding: '12px' }}>المبلغ</th>
                     <th style={{ padding: '12px' }}>التاريخ</th>
                     <th style={{ padding: '12px' }}>الحالة</th>
+                    <th style={{ padding: '12px' }}>إجراء</th>
                   </tr>
                 </thead>
                 <tbody>
                   {invoices.map((inv) => (
                     <tr key={inv.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '12px', fontWeight: 'bold' }}>{inv.client}</td>
-                      <td style={{ padding: '12px', color: '#10b981', fontWeight: 'bold' }}>${inv.amount.toLocaleString()}</td>
+                      <td style={{ padding: '12px', color: '#10b981', fontWeight: 'bold' }}>${(inv.amount || 0).toLocaleString()}</td>
                       <td style={{ padding: '12px', color: '#64748b' }}>{inv.date}</td>
                       <td style={{ padding: '12px' }}>
                         <span style={{ backgroundColor: '#d1fae5', color: '#065f46', padding: '4px 10px', borderRadius: '12px', fontSize: '12px' }}>{inv.status}</span>
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        <button onClick={() => handleDeleteInvoice(inv.id)} style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>حذف 🗑️</button>
                       </td>
                     </tr>
                   ))}
@@ -224,13 +242,13 @@ export default function Home() {
           </div>
         )}
 
-        {/* 2. قسم الاستيراد والحاويات */}
+        {/* 2. الاستيراد والحاويات */}
         {activeTab === 'inventory' && (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '24px' }}>
               <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '12px', borderRight: '5px solid #2563eb', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <div style={{ color: '#64748b', fontSize: '13px' }}>الحاويات المشحونة</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{totalContainersCount} حاوية</div>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{containers.length} حاوية</div>
               </div>
               <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '12px', borderRight: '5px solid #ef4444', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 <div style={{ color: '#64748b', fontSize: '13px' }}>المتبقي للصين / الموردين</div>
@@ -246,29 +264,28 @@ export default function Home() {
               </div>
             </div>
 
-            {/* نموذج إدخال حاوية */}
             <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
               <h3 style={{ marginTop: 0, color: '#0f172a' }}>🚢 تسجيل حاوية استيراد جديدة</h3>
-              <form onSubmit={handleAddContainer} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-                <input type="text" placeholder="رقم الحاوية (مثال: MSKU-1029)" value={cCode} onChange={(e) => setCCode(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} required />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                <input type="text" placeholder="رقم الحاوية (مثال: MSKU-1029)" value={cCode} onChange={(e) => setCCode(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
                 <input type="text" placeholder="بلد التوريد (مثال: الصين)" value={cCountry} onChange={(e) => setCCountry(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
                 <input type="text" placeholder="اسم المصنع / المورد" value={cSupplier} onChange={(e) => setCSupplier(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
                 <input type="text" placeholder="نوع الصنف (بورسلان/رخام)" value={cItemType} onChange={(e) => setCItemType(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
-                
                 <input type="number" placeholder="الكمية (م²)" value={cSqm} onChange={(e) => setCSqm(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
                 <input type="number" placeholder="عدد الألواح" value={cSlabsCount} onChange={(e) => setCSlabsCount(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
-                
                 <input type="number" placeholder="إجمالي المبلغ ($)" value={cTotalCost} onChange={(e) => setCTotalCost(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
                 <input type="number" placeholder="المبلغ المحول ($)" value={cPaidAmount} onChange={(e) => setCPaidAmount(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
                 <input type="number" placeholder="الأيام المتبقية للوصول" value={cDaysLeft} onChange={(e) => setCDaysLeft(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
 
-                <button type="submit" style={{ gridColumn: '1 / -1', backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>
+                <button
+                  onClick={handleAddContainer}
+                  type="button"
+                  style={{ gridColumn: '1 / -1', backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>
                   + حفظ الحاوية
                 </button>
-              </form>
+              </div>
             </div>
 
-            {/* جدول الحاويات */}
             <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
               <h3 style={{ marginTop: 0 }}>متابعة الحاويات الشاحنة وتفاصيل الصين</h3>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right', minWidth: '850px' }}>
@@ -281,7 +298,7 @@ export default function Home() {
                     <th style={{ padding: '12px' }}>الإجمالي والمدفوع</th>
                     <th style={{ padding: '12px' }}>المتبقي للصين</th>
                     <th style={{ padding: '12px' }}>متبقي للوصول</th>
-                    <th style={{ padding: '12px' }}>الحالة</th>
+                    <th style={{ padding: '12px' }}>إجراء</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -294,23 +311,21 @@ export default function Home() {
                       </td>
                       <td style={{ padding: '12px' }}>
                         <div>{c.itemType}</div>
-                        <div style={{ fontSize: '12px', color: '#2563eb', fontWeight: 'bold' }}>{c.sqm.toLocaleString()} م²</div>
+                        <div style={{ fontSize: '12px', color: '#2563eb', fontWeight: 'bold' }}>{(c.sqm || 0).toLocaleString()} م²</div>
                       </td>
-                      <td style={{ padding: '12px', fontWeight: 'bold', color: '#7c3aed' }}>{c.slabsCount.toLocaleString()} لوح</td>
+                      <td style={{ padding: '12px', fontWeight: 'bold', color: '#7c3aed' }}>{(c.slabsCount || 0).toLocaleString()} لوح</td>
                       <td style={{ padding: '12px' }}>
-                        <div>${c.totalCost.toLocaleString()}</div>
-                        <div style={{ fontSize: '12px', color: '#059669' }}>محول: ${c.paidAmount.toLocaleString()}</div>
+                        <div>${(c.totalCost || 0).toLocaleString()}</div>
+                        <div style={{ fontSize: '12px', color: '#059669' }}>محول: ${(c.paidAmount || 0).toLocaleString()}</div>
                       </td>
-                      <td style={{ padding: '12px', color: '#dc2626', fontWeight: 'bold' }}>${c.remainingCost.toLocaleString()}</td>
+                      <td style={{ padding: '12px', color: '#dc2626', fontWeight: 'bold' }}>${(c.remainingCost || 0).toLocaleString()}</td>
                       <td style={{ padding: '12px' }}>
                         <span style={{ backgroundColor: '#fef3c7', color: '#92400e', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>
                           ⏱️ {c.daysLeft} يوم
                         </span>
                       </td>
                       <td style={{ padding: '12px' }}>
-                        <span style={{ backgroundColor: '#dbeafe', color: '#1e40af', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}>
-                          {c.status}
-                        </span>
+                        <button onClick={() => handleDeleteContainer(c.id)} style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>حذف 🗑️</button>
                       </td>
                     </tr>
                   ))}
@@ -320,16 +335,16 @@ export default function Home() {
           </div>
         )}
 
-        {/* 3. قسم العملاء */}
+        {/* 3. العملاء */}
         {activeTab === 'clients' && (
           <div>
             <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
               <h3 style={{ marginTop: 0 }}>👤 إضافة عميل جديد</h3>
-              <form onSubmit={handleAddClient} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <input type="text" placeholder="اسم العميل / الشريك" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} style={{ flex: '1 1 200px', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} required />
-                <input type="text" placeholder="رقم الهاتف" value={newClientPhone} onChange={(e) => setNewClientPhone(e.target.value)} style={{ flex: '1 1 150px', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
-                <button type="submit" style={{ backgroundColor: '#8b5cf6', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>حفظ العميل</button>
-              </form>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <input type="text" placeholder="اسم العميل / الشريك" value={cliName} onChange={(e) => setCliName(e.target.value)} style={{ flex: '1 1 200px', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+                <input type="text" placeholder="رقم الهاتف" value={cliPhone} onChange={(e) => setCliPhone(e.target.value)} style={{ flex: '1 1 150px', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+                <button onClick={handleAddClient} type="button" style={{ backgroundColor: '#8b5cf6', color: '#fff', border: 'none', padding: '10px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>حفظ العميل</button>
+              </div>
             </div>
             <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
               <h3 style={{ marginTop: 0 }}>سجل العملاء والميدان</h3>
@@ -340,6 +355,7 @@ export default function Home() {
                     <th style={{ padding: '12px' }}>الهاتف</th>
                     <th style={{ padding: '12px' }}>المدينة</th>
                     <th style={{ padding: '12px' }}>ملاحظات</th>
+                    <th style={{ padding: '12px' }}>إجراء</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -349,6 +365,9 @@ export default function Home() {
                       <td style={{ padding: '12px', color: '#2563eb' }}>{cli.phone}</td>
                       <td style={{ padding: '12px' }}>{cli.city}</td>
                       <td style={{ padding: '12px', color: '#64748b' }}>{cli.notes}</td>
+                      <td style={{ padding: '12px' }}>
+                        <button onClick={() => handleDeleteClient(cli.id)} style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>حذف 🗑️</button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
