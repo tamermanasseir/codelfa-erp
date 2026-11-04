@@ -63,6 +63,9 @@ export default function Home(){
   const [loading,setLoading]=useState(true);
   const [section,setSection]=useState<Section>("overview");
   const [lang,setLang]=useState<"ar"|"en">("ar");
+  const [orders,setOrders]=useState<Order[]>([]);
+  const [selectedOrderId,setSelectedOrderId]=useState<string|null>(null);
+  const [orderForm,setOrderForm]=useState({orderNo:"",title:"",customerId:"",status:"open",startDate:new Date().toISOString().slice(0,10),deliveryDate:"",notes:""});
   const [shipments,setShipments]=useState<Shipment[]>([]);
   const [entries,setEntries]=useState<Entry[]>([]);
   const [invoices,setInvoices]=useState<Invoice[]>([]);
@@ -77,7 +80,7 @@ export default function Home(){
   const [chinaAllocations,setChinaAllocations]=useState<RemittanceAllocation[]>([]);
   const [error,setError]=useState("");
   const [notice,setNotice]=useState("");
-  const [modal,setModal]=useState<"shipment"|"shipmentPhotos"|"invoice"|"entry"|"party"|"budget"|"partner"|"chinaPayment"|null>(null);
+  const [modal,setModal]=useState<"order"|"shipment"|"shipmentPhotos"|"invoice"|"entry"|"party"|"budget"|"partner"|"chinaPayment"|null>(null);
   const [editingId,setEditingId]=useState<string|null>(null);
   const [shipmentForm,setShipmentForm]=useState(blankShipment());
   const [entryForm,setEntryForm]=useState(blankEntry());
@@ -107,10 +110,10 @@ export default function Home(){
   const isOwner=user?.role==="owner";
   const isAr=lang==="ar";
   const labels=isAr
-    ? {home:"الرئيسية",shipments:"الشحنات والحاويات",purchases:"المشتريات",sales:"المبيعات",invoices:"سجل الفواتير",china:"دفعات الصين",finance:"الدفعات والشيكات",parties:"الموردون والعملاء",statements:"كشوف الحسابات",reports:"الأرباح التلقائية",notes:"الملاحظات والتعليقات",team:"إدارة المساحة",refresh:"تحديث",empty:"لا توجد بيانات مسجلة بعد",add:"إضافة",readOnly:"مشاهدة وتعليق فقط"}
-    : {home:"Overview",shipments:"Shipments & Containers",purchases:"Purchases",sales:"Sales",invoices:"Invoice register",china:"China remittances",finance:"Payments & Cheques",parties:"Suppliers & Customers",statements:"Statements",reports:"Automatic profit",notes:"Notes & Comments",team:"Workspace admin",refresh:"Refresh",empty:"No records yet",add:"Add",readOnly:"View and comment only"};
+    ? {home:"الرئيسية",orders:"الأوردرات",shipments:"الشحنات والحاويات",purchases:"المشتريات",sales:"المبيعات",invoices:"سجل الفواتير",china:"دفعات الصين",finance:"الدفعات والشيكات",parties:"الموردون والعملاء",statements:"كشوف الحسابات",reports:"الأرباح التلقائية",notes:"الملاحظات والتعليقات",team:"إدارة المساحة",refresh:"تحديث",empty:"لا توجد بيانات مسجلة بعد",add:"إضافة",readOnly:"مشاهدة وتعليق فقط"}
+    : {home:"Overview",orders:"Orders",shipments:"Shipments & Containers",purchases:"Purchases",sales:"Sales",invoices:"Invoice register",china:"China remittances",finance:"Payments & Cheques",parties:"Suppliers & Customers",statements:"Statements",reports:"Automatic profit",notes:"Notes & Comments",team:"Workspace admin",refresh:"Refresh",empty:"No records yet",add:"Add",readOnly:"View and comment only"};
   const sections: {id:Section;label:string;icon:string}[]=[
-    {id:"overview",label:labels.home,icon:"⌂"},{id:"shipments",label:labels.shipments,icon:"▤"},
+    {id:"overview",label:labels.home,icon:"⌂"},{id:"orders",label:labels.orders,icon:"▦"},{id:"shipments",label:labels.shipments,icon:"▤"},
     {id:"purchases",label:labels.purchases,icon:"＋"},{id:"sales",label:labels.sales,icon:"↗"},
     {id:"invoices",label:labels.invoices,icon:"▧"},{id:"china",label:labels.china,icon:"⇢"},
     {id:"finance",label:labels.finance,icon:"⇄"},{id:"parties",label:labels.parties,icon:"♙"},
@@ -124,7 +127,8 @@ export default function Home(){
     if(!user)return;
     setError("");
     try{
-      const [s,e,i,p,b,d,c,m,h]=await Promise.all([
+      const [o,s,e,i,p,b,d,c,m,h]=await Promise.all([
+        api<{orders:Order[]}>("/api/orders"),
         api<{shipments:Shipment[]}>("/api/shipments"),
         api<{entries:Entry[]}>("/api/financial-entries"),
         api<{invoices:Invoice[];lines:InvoiceLine[];purchaseExtras:PurchaseExtra[]}>("/api/invoices"),
@@ -135,7 +139,7 @@ export default function Home(){
         api<{entries:Remittance[];allocations:RemittanceAllocation[]}>("/api/china-remittances"),
         api<{photos:ShipmentPhoto[]}>("/api/shipment-loading-photos")
       ]);
-      setShipments(s.shipments);setEntries(e.entries);setInvoices(i.invoices);setInvoiceLines(i.lines);setPurchaseExtras(i.purchaseExtras||[]);
+      setOrders(o.orders);setShipments(s.shipments);setEntries(e.entries);setInvoices(i.invoices);setInvoiceLines(i.lines);setPurchaseExtras(i.purchaseExtras||[]);
       setParties(p.counterparties);setBudgets(b.budgets);setDocuments(d.documents);setComments(c.comments);
       setChinaRemittances(m.entries);setChinaAllocations(m.allocations);setShipmentPhotos(h.photos||[]);
     }catch(err){setError(err instanceof Error?err.message:"تعذر تحميل بيانات الشراكة");}
