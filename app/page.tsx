@@ -190,8 +190,24 @@ export default function Home(){
   }
   function startShipmentEdit(s:Shipment){
     setEditingId(s.id);
-    setShipmentForm({containerNo:s.container_no||"",referenceNo:s.reference_no||"",supplierName:s.supplier_name||"",origin:s.origin||"",destination:s.destination||"",status:s.status,purchaseDate:s.purchase_date||"",etd:s.etd||"",eta:s.eta||"",billOfLadingNo:s.bill_of_lading_no||"",notes:s.notes||""});
+    setShipmentForm({containerNo:s.container_no||"",referenceNo:s.reference_no||"",supplierName:s.supplier_name||"",orderId:s.order_id||"",origin:s.origin||"",destination:s.destination||"",status:s.status,purchaseDate:s.purchase_date||"",etd:s.etd||"",eta:s.eta||"",billOfLadingNo:s.bill_of_lading_no||"",notes:s.notes||""});
     setModal("shipment");
+  }
+  function startNewOrder(){
+    setEditingId(null);setOrderForm({orderNo:"",title:"",customerId:"",status:"open",startDate:new Date().toISOString().slice(0,10),deliveryDate:"",notes:""});setModal("order");
+  }
+  function startOrderEdit(order:Order){
+    setEditingId(order.id);
+    setOrderForm({orderNo:order.order_no,title:order.title,customerId:order.customer_id||"",status:order.status,startDate:order.start_date||"",deliveryDate:order.delivery_date||"",notes:order.notes||""});
+    setModal("order");
+  }
+  async function saveOrder(e:FormEvent){
+    e.preventDefault();setError("");
+    try{
+      await api(editingId?"/api/orders/"+editingId:"/api/orders",{method:editingId?"PATCH":"POST",body:JSON.stringify(orderForm)});
+      setModal(null);setEditingId(null);await loadData();
+      setNotice(editingId?"تم تحديث بيانات الأوردر.":"تم إنشاء الأوردر بنجاح.");
+    }catch(err){setError(err instanceof Error?err.message:"تعذر حفظ الأوردر");}
   }
   async function saveShipment(e:FormEvent){
     e.preventDefault();setError("");
@@ -214,18 +230,18 @@ export default function Home(){
   }
   function startEntryEdit(x:Entry){
     setEditingId(x.id);
-    setEntryForm({entryType:x.entry_type,amount:String(x.amount_minor/100),currency:x.currency,direction:x.direction,entryDate:x.entry_date,dueDate:x.due_date||"",description:x.description||"",referenceNo:x.reference_no||"",status:x.status,counterpartyId:x.counterparty_id||"",shipmentId:x.shipment_id||"",paymentMethod:x.payment_method||"",chequeNo:x.cheque_no||"",bankName:x.bank_name||"",paidAt:x.paid_at||"",notes:x.notes||""});
+    setEntryForm({entryType:x.entry_type,amount:String(x.amount_minor/100),currency:x.currency,direction:x.direction,entryDate:x.entry_date,dueDate:x.due_date||"",description:x.description||"",referenceNo:x.reference_no||"",status:x.status,counterpartyId:x.counterparty_id||"",shipmentId:x.shipment_id||"",orderId:x.order_id||"",paymentMethod:x.payment_method||"",chequeNo:x.cheque_no||"",bankName:x.bank_name||"",paidAt:x.paid_at||"",notes:x.notes||""});
     setModal("entry");
   }
-  function startNewInvoice(type:"purchase"|"sale"){
-    setEditingId(null);setInvoiceFiles([]);setInvoiceForm({...blankInvoice(),invoiceType:type});setModal("invoice");
+  function startNewInvoice(type:"purchase"|"sale",orderId=""){
+    setEditingId(null);setInvoiceFiles([]);setInvoiceForm({...blankInvoice(),invoiceType:type,orderId});setModal("invoice");
   }
   function startInvoiceEdit(i:Invoice){
     const lines=invoiceLines.filter(l=>l.invoice_id===i.id);
     setEditingId(i.id);
     setInvoiceFiles([]);
     setInvoiceForm({
-      invoiceNo:i.invoice_no,invoiceType:i.invoice_type,counterpartyId:i.counterparty_id||"",shipmentId:i.shipment_id||"",
+      invoiceNo:i.invoice_no,invoiceType:i.invoice_type,counterpartyId:i.counterparty_id||"",shipmentId:i.shipment_id||"",orderId:i.order_id||"",
       invoiceDate:i.invoice_date,dueDate:i.due_date||"",currency:i.currency,discount:String(i.discount_minor/100),
       tax:String(i.tax_minor/100),status:i.status,notes:i.notes||"",
       lines:lines.length?lines.map(l=>({description:l.description,quantity:String(l.quantity),unit:l.unit,unitArea:String(l.unit_area_m2||1),pricingBasis:l.pricing_basis||"unit",unitPrice:String(l.unit_price_minor/100)})):[{description:"",quantity:"1",unit:"pcs",unitArea:"1",pricingBasis:"sqm",unitPrice:""}],
