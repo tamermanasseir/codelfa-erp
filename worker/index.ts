@@ -198,9 +198,59 @@ async function handle(request: Request, env: Env): Promise<Response> {
   }
   if (!user) return fail("Sign in required", 401);
 
+  if (path === "/api/orders" && request.method === "GET") {
+    const result=await env.DB.prepare(
+      "SELECT o.*,c.name AS customer_name,(SELECT COUNT(*) FROM shipments s WHERE s.order_id=o.id AND s.archived_at IS NULL) AS shipment_count,(SELECT COUNT(*) FROM invoices i WHERE i.order_id=o.id AND i.archived_at IS NULL) AS invoice_count FROM orders o LEFT JOIN counterparties c ON c.id=o.customer_id WHERE o.archived_at IS NULL ORDER BY o.created_at DESC"
+    ).all();
+    return json({orders:result.results});
+  }
+  if (path === "/api/orders" && request.method === "POST") {
+    if(!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const d=await body(request),orderNo=text(d?.orderNo,80),title=text(d?.title,200);
+    const status=text(d?.status,30)||"open",customerId=text(d?.customerId,80)||null;
+    const startDate=validDate(d?.startDate)||null,deliveryDate=validDate(d?.deliveryDate)||null;
+    if(!orderNo||!title||!["open","in_progress","partially_delivered","completed","on_hold","cancelled"].includes(status)) return fail("Enter an order number, title and valid status.");
+    if(customerId){
+      const customer=await env.DB.prepare("SELECT id FROM counterparties WHERE id=? AND counterparty_type='customer' AND archived_at IS NULL").bind(customerId).first();
+      if(!customer) return fail("Select an active customer.");
+    }
+    const id=randomId();
+    try{
+      await env.DB.prepare("INSERT INTO orders (id,order_no,title,customer_id,status,start_date,delivery_date,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?)")
+        .bind(id,orderNo,title,customerId,status,startDate,deliveryDate,text(d?.notes,3000)||null,user.id).run();
+    }catch(error){console.error("CODELFA order create failed",error);return fail("Could not save order. Check that its number is unique.",409);}
+    await audit(env,user.id,"create","order",id,{orderNo,title,status});
+    return json({ok:true,id},201);
+  }
+  const orderMatch=path.match(/^\\/api\\/orders\\/([a-f0-9-]+)$/i);
+  if(orderMatch&&request.method==="PATCH"){
+    if(!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const d=await body(request),orderNo=text(d?.orderNo,80),title=text(d?.title,200);
+    const status=text(d?.status,30),customerId=text(d?.customerId,80)||null;
+    if(!orderNo||!title||!["open","in_progress","partially_delivered","completed","on_hold","cancelled"].includes(status)) return fail("Check the order number, title and status.");
+    if(customerId){
+      const customer=await env.DB.prepare("SELECT id FROM counterparties WHERE id=? AND counterparty_type='customer' AND archived_at IS NULL").bind(customerId).first();
+      if(!customer) return fail("Select an active customer.");
+    }
+    try{
+      const result=await env.DB.prepare("UPDATE orders SET order_no=?,title=?,customer_id=?,status=?,start_date=?,delivery_date=?,notes=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
+        .bind(orderNo,title,customerId,status,validDate(d?.startDate)||null,validDate(d?.deliveryDate)||null,text(d?.notes,3000)||null,orderMatch[1]).run();
+      if(!result.meta.changes) return fail("Order not found.",404);
+    }catch(error){console.error("CODELFA order update failed",error);return fail("Could not update order. Check that its number is unique.",409);}
+    await audit(env,user.id,"update","order",orderMatch[1],{orderNo,status});
+    return json({ok:true});
+  }
+  if(orderMatch&&request.method==="DELETE"){
+    if(!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const result=await env.DB.prepare("UPDATE orders SET archived_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL").bind(orderMatch[1]).run();
+    if(!result.meta.changes) return fail("Order not found.",404);
+    await audit(env,user.id,"archive","order",orderMatch[1]);
+    return json({ok:true});
+  }
+
   if (path === "/api/workspace/backup" && request.method === "GET") {
     if (!ownerOnly(user)) return fail("Owner access required", 403);
-    const tables = ["counterparties","shipments","shipment_budgets","invoices","invoice_lines","purchase_invoice_extras","financial_entries","invoice_payment_allocations","shipment_loading_photos","documents","attachments","comments","audit_log"];
+    const tables = ["counterparties","orders","shipments","shipment_budgets","invoices","invoice_lines","purchase_invoice_extras","financial_entries","invoice_payment_allocations","shipment_loading_photos","documents","attachments","comments","audit_log"];
     const rows = await Promise.all(tables.map(async (table) => {
       const result = await env.DB.prepare("SELECT * FROM " + table).all();
       return [table, result.results] as const;
@@ -215,6 +265,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const statements = [
       "DELETE FROM invoice_payment_allocations",
       "DELETE FROM purchase_invoice_extras",
+      "DELETE FROM orders",
       "DELETE FROM shipment_loading_photos",
       "DELETE FROM comments",
       "DELETE FROM documents",
@@ -270,6 +321,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const reference = text(data?.referenceNo, 40) || null;
     const supplierName = text(data?.supplierName, 120);
     const status = text(data?.status, 30) || "purchased";
+    let orderId=text(data?.orderId,80)||null;
     const allowed = ["purchased","ordered","booked","loaded","departed","in_transit","arrived","customs_clearance","released","received","closed"];
     if (!container && !reference) return fail("Enter a container or reference number.");
     if (!allowed.includes(status)) return fail("Invalid shipment status.");
@@ -279,10 +331,14 @@ async function handle(request: Request, env: Env): Promise<Response> {
       supplierId = found?.id || randomId();
       if (!found) await env.DB.prepare("INSERT INTO counterparties (id,name,counterparty_type,created_by) VALUES (?,?,'supplier',?)").bind(supplierId,supplierName,user.id).run();
     }
+    if(orderId){
+      const order=await env.DB.prepare("SELECT id FROM orders WHERE id=? AND archived_at IS NULL").bind(orderId).first();
+      if(!order) return fail("Select an active order.");
+    }
     const id = randomId();
     await env.DB.prepare(
-      "INSERT INTO shipments (id, reference_no, container_no, supplier_id, origin, destination, status, purchase_date, etd, eta, bill_of_lading_no, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(id, reference, container || null, supplierId, text(data?.origin,100), text(data?.destination,100), status, validDate(data?.purchaseDate) || null, validDate(data?.etd) || null, validDate(data?.eta) || null, text(data?.billOfLadingNo,80) || null, text(data?.notes,2000) || null, user.id).run();
+      "INSERT INTO shipments (id, reference_no, container_no, supplier_id, origin, destination, status, purchase_date, etd, eta, bill_of_lading_no, notes, created_by, order_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(id, reference, container || null, supplierId, text(data?.origin,100), text(data?.destination,100), status, validDate(data?.purchaseDate) || null, validDate(data?.etd) || null, validDate(data?.eta) || null, text(data?.billOfLadingNo,80) || null, text(data?.notes,2000) || null, user.id,orderId).run();
     await audit(env, user.id, "create", "shipment", id, { containerNo: container, status });
     return json({ ok: true, id }, 201);
   }
@@ -293,10 +349,15 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const data = await body(request);
     const id = shipmentMatch[1];
     const status = text(data?.status,30);
+    const orderId=text(data?.orderId,80)||null;
     const allowed = ["purchased","ordered","booked","loaded","departed","in_transit","arrived","customs_clearance","released","received","closed"];
     if (!allowed.includes(status)) return fail("Invalid shipment status.");
-    const result = await env.DB.prepare("UPDATE shipments SET container_no=?,reference_no=?,origin=?,destination=?,status=?,purchase_date=?,etd=?,eta=?,bill_of_lading_no=?,notes=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
-      .bind(text(data?.containerNo,40).toUpperCase() || null,text(data?.referenceNo,40) || null,text(data?.origin,100) || null,text(data?.destination,100) || null,status,validDate(data?.purchaseDate) || null,validDate(data?.etd) || null,validDate(data?.eta) || null,text(data?.billOfLadingNo,80) || null,text(data?.notes,2000) || null,id).run();
+    if(orderId){
+      const order=await env.DB.prepare("SELECT id FROM orders WHERE id=? AND archived_at IS NULL").bind(orderId).first();
+      if(!order) return fail("Select an active order.");
+    }
+    const result = await env.DB.prepare("UPDATE shipments SET container_no=?,reference_no=?,origin=?,destination=?,status=?,purchase_date=?,etd=?,eta=?,bill_of_lading_no=?,notes=?,order_id=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
+      .bind(text(data?.containerNo,40).toUpperCase() || null,text(data?.referenceNo,40) || null,text(data?.origin,100) || null,text(data?.destination,100) || null,status,validDate(data?.purchaseDate) || null,validDate(data?.etd) || null,validDate(data?.eta) || null,text(data?.billOfLadingNo,80) || null,text(data?.notes,2000) || null,orderId,id).run();
     if (!result.meta.changes) return fail("Shipment not found.",404);
     await audit(env,user.id,"update","shipment",id,{status});
     return json({ok:true});
