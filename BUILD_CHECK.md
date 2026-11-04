@@ -1,0 +1,1 @@
+CODELFA PARTNERS build validation marker. The app remains isolated on partners-v1 until the build is verified.
