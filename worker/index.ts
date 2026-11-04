@@ -178,6 +178,38 @@ async function handle(request: Request, env: Env): Promise<Response> {
   }
   if (!user) return fail("Sign in required", 401);
 
+  if (path === "/api/workspace/backup" && request.method === "GET") {
+    if (!ownerOnly(user)) return fail("Owner access required", 403);
+    const tables = ["counterparties","shipments","shipment_budgets","invoices","invoice_lines","financial_entries","invoice_payment_allocations","documents","attachments","comments","audit_log"];
+    const rows = await Promise.all(tables.map(async (table) => {
+      const result = await env.DB.prepare("SELECT * FROM " + table).all();
+      return [table, result.results] as const;
+    }));
+    return json({ exported_at: new Date().toISOString(), format: "CODELFA-PARTNERS-BACKUP-1", data: Object.fromEntries(rows) });
+  }
+
+  if (path === "/api/workspace/reset" && request.method === "POST") {
+    if (!ownerOnly(user)) return fail("Owner access required", 403);
+    const data = await body(request);
+    if (text(data?.confirmation, 40) !== "RESET CODELFA") return fail("Type RESET CODELFA to confirm this operation.", 400);
+    const statements = [
+      "DELETE FROM invoice_payment_allocations",
+      "DELETE FROM comments",
+      "DELETE FROM documents",
+      "DELETE FROM attachments",
+      "DELETE FROM shipment_budgets",
+      "DELETE FROM invoice_lines",
+      "DELETE FROM financial_entries",
+      "DELETE FROM invoices",
+      "DELETE FROM shipments",
+      "DELETE FROM counterparties"
+    ].map((sql) => env.DB.prepare(sql));
+    statements.push(env.DB.prepare("INSERT INTO audit_log (id,actor_user_id,action,entity_type,entity_id,details_json) VALUES (?,?,?,?,?,?)")
+      .bind(randomId(), user.id, "workspace_reset", "workspace", "business_data", JSON.stringify({ retained: ["users","sessions","workspace_settings","audit_log"] })));
+    await env.DB.batch(statements);
+    return json({ ok: true, message: "Business data cleared. Accounts, settings and audit history were retained." });
+  }
+
   if (path === "/api/users" && request.method === "GET") {
     if (!ownerOnly(user)) return fail("Owner access required", 403);
     const result = await env.DB.prepare("SELECT id, username, display_name, role, is_active, created_at FROM users ORDER BY created_at").all();
@@ -272,7 +304,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
   }
 
   if (path === "/api/invoices" && request.method === "GET") {
-    const invoices=await env.DB.prepare("SELECT i.*,c.name AS counterparty_name,s.container_no FROM invoices i LEFT JOIN counterparties c ON c.id=i.counterparty_id LEFT JOIN shipments s ON s.id=i.shipment_id WHERE i.archived_at IS NULL ORDER BY i.invoice_date DESC,i.created_at DESC").all();
+    const invoices=await env.DB.prepare("SELECT i.*,c.name AS counterparty_name,s.container_no,COALESCE((SELECT SUM(a.amount_minor) FROM invoice_payment_allocations a JOIN financial_entries fe ON fe.id=a.financial_entry_id WHERE a.invoice_id=i.id AND fe.archived_at IS NULL AND fe.status<>'cancelled'),0) AS paid_minor FROM invoices i LEFT JOIN counterparties c ON c.id=i.counterparty_id LEFT JOIN shipments s ON s.id=i.shipment_id WHERE i.archived_at IS NULL ORDER BY i.invoice_date DESC,i.created_at DESC").all();
     const lines=await env.DB.prepare("SELECT l.* FROM invoice_lines l JOIN invoices i ON i.id=l.invoice_id WHERE i.archived_at IS NULL ORDER BY l.rowid").all();
     return json({invoices:invoices.results,lines:lines.results});
   }
@@ -340,6 +372,48 @@ async function handle(request: Request, env: Env): Promise<Response> {
     await env.DB.prepare("UPDATE invoices SET archived_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL").bind(invoiceMatch[1]).run();
     await audit(env,user.id,"archive","invoice",invoiceMatch[1]);
     return json({ok:true});
+  }
+
+  if (path === "/api/china-remittances" && request.method === "GET") {
+    const [entries, allocations] = await Promise.all([
+      env.DB.prepare("SELECT f.id,f.entry_date,f.amount_minor,f.currency,f.reference_no,f.description,f.notes,f.payment_method,f.status,COALESCE((SELECT SUM(a.amount_minor) FROM invoice_payment_allocations a WHERE a.financial_entry_id=f.id),0) AS allocated_minor FROM financial_entries f WHERE f.entry_type='payment' AND f.direction='out' AND f.archived_at IS NULL AND f.status<>'cancelled' ORDER BY f.entry_date DESC,f.created_at DESC").all(),
+      env.DB.prepare("SELECT a.id,a.invoice_id,a.financial_entry_id,a.amount_minor,a.currency,i.invoice_no,c.name AS supplier_name,s.container_no FROM invoice_payment_allocations a JOIN financial_entries f ON f.id=a.financial_entry_id JOIN invoices i ON i.id=a.invoice_id LEFT JOIN counterparties c ON c.id=i.counterparty_id LEFT JOIN shipments s ON s.id=i.shipment_id WHERE f.archived_at IS NULL AND f.status<>'cancelled' ORDER BY f.entry_date DESC").all()
+    ]);
+    return json({ entries: entries.results, allocations: allocations.results });
+  }
+
+  if (path === "/api/china-remittances" && request.method === "POST") {
+    if (!ownerOnly(user)) return fail("Partner access is read-only.", 403);
+    const d = await body(request);
+    const amount = minor(d?.amount), curr = currency(d?.currency), date = validDate(d?.entryDate);
+    const allocations = Array.isArray(d?.allocations) ? d.allocations as Record<string,unknown>[] : [];
+    if (amount === null || amount <= 0 || !curr || !date || allocations.length > 30) return fail("Enter a valid transfer amount, currency and date.");
+    const parsed: { invoiceId:string; amount:number }[] = [];
+    let allocatedTotal = 0;
+    for (const item of allocations) {
+      const invoiceId = text(item.invoiceId,80), allocationAmount = minor(item.amount);
+      if (!invoiceId || allocationAmount === null || allocationAmount <= 0) return fail("Check each invoice allocation and amount.");
+      const invoice = await env.DB.prepare("SELECT i.id,i.invoice_type,i.currency,i.total_minor,i.status,i.archived_at,COALESCE((SELECT SUM(a.amount_minor) FROM invoice_payment_allocations a JOIN financial_entries fe ON fe.id=a.financial_entry_id WHERE a.invoice_id=i.id AND fe.archived_at IS NULL AND fe.status<>'cancelled'),0) AS paid_minor FROM invoices i WHERE i.id=?").bind(invoiceId).first<{id:string;invoice_type:string;currency:string;total_minor:number;status:string;archived_at:string|null;paid_minor:number}>();
+      if (!invoice || invoice.archived_at || invoice.status === "cancelled" || invoice.invoice_type !== "purchase") return fail("Only active purchase invoices can be allocated to a China remittance.");
+      if (invoice.currency !== curr) return fail("The transfer and purchase invoice must use the same currency.");
+      if (invoice.paid_minor + allocationAmount > invoice.total_minor) return fail("An allocation exceeds the remaining balance of invoice " + invoice.id.slice(0,8) + ".");
+      if (parsed.some((x) => x.invoiceId === invoiceId)) return fail("Select each invoice only once in this transfer.");
+      parsed.push({invoiceId,amount:allocationAmount});
+      allocatedTotal += allocationAmount;
+    }
+    if (allocatedTotal > amount) return fail("Invoice allocations cannot exceed the actual transfer amount.");
+    const id = randomId();
+    const statements: D1PreparedStatement[] = [
+      env.DB.prepare("INSERT INTO financial_entries (id,entry_type,reference_no,counterparty_id,shipment_id,entry_date,due_date,amount_minor,currency,direction,status,description,notes,created_by,payment_method,cheque_no,bank_name,paid_at) VALUES (?,'payment',?,NULL,NULL,?,NULL,?,?,'out','recorded',?,?,?,'bank_transfer',NULL,NULL,?)")
+        .bind(id,text(d?.referenceNo,80)||null,date,amount,curr,text(d?.description,240)||"تحويل إلى الصين",text(d?.notes,3000)||null,user.id,date)
+    ];
+    for (const item of parsed) statements.push(env.DB.prepare("INSERT INTO invoice_payment_allocations (id,invoice_id,financial_entry_id,amount_minor,currency,created_by) VALUES (?,?,?,?,?,?)")
+      .bind(randomId(),item.invoiceId,id,item.amount,curr,user.id));
+    statements.push(env.DB.prepare("INSERT INTO audit_log (id,actor_user_id,action,entity_type,entity_id,details_json) VALUES (?,?,?,?,?,?)")
+      .bind(randomId(),user.id,"create","china_remittance",id,JSON.stringify({amount,currency:curr,allocated:allocatedTotal,invoiceCount:parsed.length})));
+    try { await env.DB.batch(statements); }
+    catch (error) { console.error("CODELFA China remittance failed",error); return fail("Could not save the transfer and its invoice allocations.",409); }
+    return json({ok:true,id,allocatedMinor:allocatedTotal,unallocatedMinor:amount-allocatedTotal},201);
   }
 
   if (path === "/api/financial-entries" && request.method === "GET") {
