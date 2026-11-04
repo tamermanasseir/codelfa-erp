@@ -541,19 +541,19 @@ async function handle(request: Request, env: Env): Promise<Response> {
     await audit(env,user.id,"upload","shipment_loading_photo",id,{shipmentId,name,size:bytes.length,photoDate});
     return json({ok:true,id},201);
   }
-  const shipmentPhotoMatch=path.match(/^\\/api\\/shipment-loading-photos\\/([a-f0-9-]+)$/i);
-  if(shipmentPhotoMatch&&request.method==="GET"){
-    const photo=await env.DB.prepare("SELECT file_name,content_type,content_base64 FROM shipment_loading_photos WHERE id=?").bind(shipmentPhotoMatch[1]).first<{file_name:string;content_type:string;content_base64:string}>();
+  const shipmentPhotoId=path.startsWith("/api/shipment-loading-photos/")?path.slice("/api/shipment-loading-photos/".length):"";
+  if(shipmentPhotoId&&request.method==="GET"){
+    const photo=await env.DB.prepare("SELECT file_name,content_type,content_base64 FROM shipment_loading_photos WHERE id=?").bind(shipmentPhotoId).first<{file_name:string;content_type:string;content_base64:string}>();
     if(!photo) return fail("Photo not found.",404);
     const safeName=encodeURIComponent(photo.file_name).replace(/'/g,"%27");
     return new Response(fromBase64(photo.content_base64),{headers:{"content-type":photo.content_type,"content-disposition":"inline; filename*=UTF-8''"+safeName,"cache-control":"private, no-store","x-content-type-options":"nosniff"}});
   }
   if(shipmentPhotoMatch&&request.method==="DELETE"){
     if(!ownerOnly(user)) return fail("Owner access required.",403);
-    const existing=await env.DB.prepare("SELECT id,shipment_id,file_name FROM shipment_loading_photos WHERE id=?").bind(shipmentPhotoMatch[1]).first<{id:string;shipment_id:string;file_name:string}>();
+    const existing=await env.DB.prepare("SELECT id,shipment_id,file_name FROM shipment_loading_photos WHERE id=?").bind(shipmentPhotoId).first<{id:string;shipment_id:string;file_name:string}>();
     if(!existing) return fail("Photo not found.",404);
-    await env.DB.prepare("DELETE FROM shipment_loading_photos WHERE id=?").bind(shipmentPhotoMatch[1]).run();
-    await audit(env,user.id,"delete","shipment_loading_photo",shipmentPhotoMatch[1],{shipmentId:existing.shipment_id,name:existing.file_name});
+    await env.DB.prepare("DELETE FROM shipment_loading_photos WHERE id=?").bind(shipmentPhotoId).run();
+    await audit(env,user.id,"delete","shipment_loading_photo",shipmentPhotoId,{shipmentId:existing.shipment_id,name:existing.file_name});
     return json({ok:true});
   }
 
