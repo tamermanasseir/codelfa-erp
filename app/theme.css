@@ -1,0 +1,106 @@
+/* CODELFA PARTNERS — refined navy, champagne-gold and soft-neutral theme */
+:root {
+  --navy: #10243d;
+  --navy2: #1b3855;
+  --ink: #20364d;
+  --muted: #718197;
+  --gold: #c5a15b;
+  --gold2: #ead39b;
+  --line: #e4e9ef;
+  --paper: #f4f6f9;
+  --white: #ffffff;
+  --green: #16815d;
+  --red: #bd5050;
+  --codelfa-shadow: 0 8px 24px rgba(16, 36, 61, .055);
+}
+html, body { background: var(--paper); }
+body { color: var(--ink); }
+.sidebar {
+  background: linear-gradient(165deg, #0d1c31 0%, #132b46 58%, #1b3855 100%);
+  box-shadow: 8px 0 28px rgba(10, 28, 49, .10);
+}
+.brand-mark {
+  background: linear-gradient(145deg, #f3e4bd 0%, #d2ae68 52%, #b88c43 100%);
+  color: #10243d;
+  box-shadow: 0 6px 18px rgba(197, 161, 91, .22);
+}
+.nav-item { border: 1px solid transparent; }
+.nav-item:hover { background: rgba(255,255,255,.075); }
+.nav-item.active {
+  background: linear-gradient(100deg, rgba(197,161,91,.20), rgba(197,161,91,.075));
+  border-color: rgba(234,211,155,.22);
+  color: #f5dfad;
+}
+.nav-icon { color: #dfc17e; }
+.topbar {
+  background: rgba(255,255,255,.94);
+  border-bottom-color: #e6ebf1;
+  box-shadow: 0 3px 16px rgba(16,36,61,.025);
+}
+.content { background: transparent; }
+.hero-card {
+  background: radial-gradient(circle at 12% 18%, rgba(197,161,91,.16), transparent 30%),
+    linear-gradient(112deg, #10243d 0%, #183653 58%, #244766 100%);
+  box-shadow: 0 16px 36px rgba(16,36,61,.14);
+}
+.hero-card:after { border-color: rgba(234,211,155,.20); }
+.hero-copy h2 em, .hero-kicker { color: #ead39b; }
+.gold-button {
+  background: linear-gradient(135deg, #f0dfb5 0%, #d4b36f 55%, #bd9148 100%);
+  color: #142940;
+  box-shadow: 0 5px 15px rgba(151,112,44,.16);
+}
+.stat-card, .currency-card, .panel, .party-card {
+  border-color: #e4e9ef;
+  box-shadow: var(--codelfa-shadow);
+}
+.stat-card, .currency-card, .panel { background: #fff; }
+.stat-card, .currency-card, .panel, .party-card, .hero-card {
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.stat-card:hover, .currency-card:hover, .party-card:hover {
+  border-color: #d8c394;
+  box-shadow: 0 11px 28px rgba(16,36,61,.075);
+}
+.section-heading h2, .panel-head h3, .welcome-row h1, .page-heading h1 {
+  color: #142c46;
+}
+.eyebrow { color: #a9823d; }
+.date-pill { border-color: #e4e9ef; background: #fff; }
+input, select, textarea {
+  border-color: #d6dee8;
+  background: #fcfdff;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: #c5a15b;
+  box-shadow: 0 0 0 3px rgba(197,161,91,.17);
+}
+th { background: #f5f7fa; color: #53677d; }
+tbody tr:hover { background: #f8fafc; }
+.pill.positive, .pill.success, .status-success {
+  color: #176b50;
+  background: #e8f5ef;
+}
+.pill.neutral, .pill.warning, .status-warning {
+  color: #886727;
+  background: #fbf3df;
+}
+.pill.danger, .status-danger {
+  color: #a94444;
+  background: #fbeceb;
+}
+.pill.info, .status-info {
+  color: #315f88;
+  background: #eaf2f9;
+}
+.mobile-nav button.selected {
+  color: #f0d99f;
+  background: rgba(197,161,91,.17);
+}
+.modal {
+  border: 1px solid rgba(228,233,239,.9);
+  box-shadow: 0 24px 70px rgba(9,25,43,.22);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
