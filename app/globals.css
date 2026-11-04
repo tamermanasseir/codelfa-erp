@@ -203,6 +203,89 @@ footer span{letter-spacing:.5px}
   .selected-file{align-items:flex-start}
 }
 
+
+
+/* Stronger, darker typography across the entire CODELFA workspace */
+body{
+  color:#102943;
+  font-size:15px;
+  font-weight:600;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+button,input,select,textarea{
+  font-weight:700;
+}
+p,.hint,.welcome-row p,.page-heading p,.section-heading p,.panel-head p{
+  color:#53677d;
+  font-weight:600;
+}
+.crumb{color:#586d83;font-weight:600}
+.crumb b{color:#102943;font-weight:800}
+.nav-item{
+  color:#e0e8f0;
+  font-weight:700;
+  font-size:13.5px;
+}
+.nav-item.active{color:#ffe3a2;font-weight:800}
+.nav-caption{color:#bdcbd9;font-weight:800}
+.brand-sub{color:#c7d2de;font-weight:600}
+.workspace small{color:#d0d9e3;font-weight:600}
+.welcome-row h1,.page-heading h1{
+  color:#0b233d;
+  font-weight:900;
+}
+.section-heading h2,.panel-head h3{
+  color:#102943;
+  font-weight:850;
+}
+.stat-top{color:#465d74;font-weight:700}
+.stat-card strong{color:#102943;font-weight:900}
+.stat-card small{color:#62768a;font-weight:600}
+.currency-card small{color:#5b7086;font-weight:700}
+.currency-card b{color:#142f4a;font-weight:800}
+th{
+  color:#314b65;
+  font-size:11px;
+  font-weight:850;
+}
+td{
+  color:#203951;
+  font-size:12px;
+  font-weight:600;
+}
+.row-id{
+  color:#64788d;
+  font-weight:600;
+}
+label{
+  color:#172f49;
+  font-weight:850;
+}
+input,select,textarea{
+  color:#102943;
+  font-weight:700;
+}
+input::placeholder,textarea::placeholder{
+  color:#657a90;
+  font-weight:600;
+}
+.pill{font-weight:800}
+.activity b{font-weight:800;color:#172f49}
+.activity small{color:#64788d;font-weight:600}
+.date-pill,.lang-select,.user-chip b{font-weight:700}
+.user-chip small{color:#65788d;font-weight:600}
+.empty-row,.empty-state{color:#687d92;font-weight:700}
+.modal-head h3{color:#102943;font-weight:900}
+.modal-head p{color:#687d91;font-weight:600}
+.permission-grid span,.permission-grid b{font-weight:700}
+@media(max-width:850px){
+  body{font-size:15px}
+  td{font-size:12px}
+  .mobile-nav button{font-weight:800;color:#405870}
+  .mobile-nav button.selected{color:#f6d991;font-weight:900}
+}
+
 /* Form field clarity and premium input treatment */
 label{
   color:#263d56;
