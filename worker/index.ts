@@ -321,7 +321,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const reference = text(data?.referenceNo, 40) || null;
     const supplierName = text(data?.supplierName, 120);
     const status = text(data?.status, 30) || "purchased";
-    let orderId=text(data?.orderId,80)||null;
+    const orderId=text(data?.orderId,80)||null;
     const allowed = ["purchased","ordered","booked","loaded","departed","in_transit","arrived","customs_clearance","released","received","closed"];
     if (!container && !reference) return fail("Enter a container or reference number.");
     if (!allowed.includes(status)) return fail("Invalid shipment status.");
