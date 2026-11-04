@@ -872,3 +872,40 @@ body{background:linear-gradient(135deg,#eef2f6 0%,#f5f3ee 52%,#eaf0f4 100%)}
   .main-area{background:linear-gradient(180deg,#f1f4f7 0%,#f5f3ef 100%)}
   .workflow-grid button{box-shadow:0 7px 18px #102b4610}
 }
+
+
+/* Printable CODELFA statements: isolated A4 output with a branded electronic mark */
+.print-sheet{display:none}
+@media print{
+  @page{size:A4;margin:14mm}
+  body,html{background:#fff!important}
+  body *{visibility:hidden!important}
+  .print-sheet,.print-sheet *{visibility:visible!important}
+  .print-sheet{
+    display:block!important;position:absolute!important;inset:0 auto auto 0!important;
+    width:100%!important;min-height:260mm;padding:0!important;margin:0!important;
+    background:#fff!important;color:#172b43!important;font-family:Arial,"Segoe UI",sans-serif!important;
+  }
+  .print-brand{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:0 0 13px;border-bottom:3px solid #c99b48;margin-bottom:22px;
+    color:#102943
+  }
+  .print-brand b{font-size:19px;letter-spacing:1px}
+  .print-brand span{font-size:9px;letter-spacing:2px;color:#8a6b36}
+  .print-sheet h1{font-size:25px;margin:16px 0 7px;color:#102943}
+  .print-sheet h2{font-size:17px;margin:0 0 8px;color:#8a6b36}
+  .print-sheet p{font-size:10px;color:#65778a;margin:0 0 18px}
+  .print-sheet table{width:100%;border-collapse:collapse;white-space:normal}
+  .print-sheet th{background:#102943!important;color:#f5dfa9!important;padding:10px 8px;font-size:9px}
+  .print-sheet td{padding:9px 8px;border-bottom:1px solid #e3e8ed;font-size:9px;color:#243b52}
+  .print-stamp{
+    display:inline-block;margin-top:28px;padding:10px 15px;
+    border:2px solid #b88a3d;border-radius:8px;color:#9b742f;
+    font-size:10px;font-weight:900;letter-spacing:1.2px;
+  }
+  .print-sheet footer{
+    display:block;margin-top:34px;padding:12px 0 0;border-top:1px solid #dfe5ea;
+    color:#7b8b9b;font-size:9px;text-align:center;letter-spacing:2px;
+  }
+}
