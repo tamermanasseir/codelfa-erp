@@ -25,6 +25,8 @@ type Invoice = {
 type Remittance = {id:string;entry_date:string;amount_minor:number;currency:string;reference_no:string|null;description:string|null;notes:string|null;payment_method:string|null;status:string;allocated_minor:number};
 type RemittanceAllocation = {id:string;invoice_id:string;financial_entry_id:string;amount_minor:number;currency:string;entry_date:string;invoice_no:string;supplier_name:string|null;container_no:string|null};
 type InvoiceLine = {id:string;invoice_id:string;description:string;quantity:number;unit:string;unit_price_minor:number;line_total_minor:number;notes:string|null};
+type PurchaseExtra = {id:string;invoice_id:string;category:string;description:string;amount_minor:number;currency:string;expense_date:string;notes:string|null;shipment_id:string|null;invoice_no:string};
+type PurchaseExtraForm = {category:string;description:string;amount:string;currency:string;expenseDate:string;notes:string};
 type Budget = {id:string;shipment_id:string;budget_type:"sale"|"purchase"|"expense";currency:string;expected_minor:number;notes:string|null};
 type DocumentItem = {id:string;target_type:string;target_id:string;file_name:string;content_type:string;byte_size:number;created_at:string};
 type Comment = {id:string;body:string;author:string;created_at:string;target_type:string;target_id:string|null};
@@ -48,7 +50,9 @@ async function api<T>(path:string,options:RequestInit={}):Promise<T>{
 }
 const blankShipment=()=>({containerNo:"",referenceNo:"",supplierName:"",origin:"Qingdao",destination:"Ashdod",status:"purchased",purchaseDate:"",etd:"",eta:"",billOfLadingNo:"",notes:""});
 const blankEntry=()=>({entryType:"payment",amount:"",currency:"USD",direction:"out",entryDate:new Date().toISOString().slice(0,10),dueDate:"",description:"",referenceNo:"",status:"recorded",counterpartyId:"",shipmentId:"",paymentMethod:"bank_transfer",chequeNo:"",bankName:"",paidAt:"",notes:""});
-const blankInvoice=()=>({invoiceNo:"",invoiceType:"sale",counterpartyId:"",shipmentId:"",invoiceDate:new Date().toISOString().slice(0,10),dueDate:"",currency:"USD",discount:"0",tax:"0",status:"issued",notes:"",lines:[{description:"",quantity:"1",unit:"pcs",unitPrice:""}] as InvoiceLineForm[]});
+const blankInvoice=()=>({invoiceNo:"",invoiceType:"sale",counterpartyId:"",shipmentId:"",invoiceDate:new Date().toISOString().slice(0,10),dueDate:"",currency:"USD",discount:"0",tax:"0",status:"issued",notes:"",lines:[{description:"",quantity:"1",unit:"pcs",unitPrice:""}] as InvoiceLineForm[],purchaseExtras:[] as PurchaseExtraForm[]});
+const purchaseExtraCategories=[["freight","أجور الشحن"],["customs","جمارك وتخليص"],["handling","مناولة وتحميل"],["cutting","قص وتجهيز"],["unloading","تنزيل"],["insurance","تأمين"],["other","إضافات أخرى"]];
+const blankPurchaseExtra=(currency="USD"):PurchaseExtraForm=>({category:"freight",description:"",amount:"",currency,expenseDate:new Date().toISOString().slice(0,10),notes:""});
 const blankChinaPayment=()=>({amount:"",currency:"USD",entryDate:new Date().toISOString().slice(0,10),referenceNo:"",notes:"",allocations:[{invoiceId:"",amount:""}]});
 
 export default function Home(){
@@ -61,6 +65,7 @@ export default function Home(){
   const [entries,setEntries]=useState<Entry[]>([]);
   const [invoices,setInvoices]=useState<Invoice[]>([]);
   const [invoiceLines,setInvoiceLines]=useState<InvoiceLine[]>([]);
+  const [purchaseExtras,setPurchaseExtras]=useState<PurchaseExtra[]>([]);
   const [parties,setParties]=useState<Party[]>([]);
   const [budgets,setBudgets]=useState<Budget[]>([]);
   const [documents,setDocuments]=useState<DocumentItem[]>([]);
@@ -114,14 +119,14 @@ export default function Home(){
       const [s,e,i,p,b,d,c,m]=await Promise.all([
         api<{shipments:Shipment[]}>("/api/shipments"),
         api<{entries:Entry[]}>("/api/financial-entries"),
-        api<{invoices:Invoice[];lines:InvoiceLine[]}>("/api/invoices"),
+        api<{invoices:Invoice[];lines:InvoiceLine[];purchaseExtras:PurchaseExtra[]}>("/api/invoices"),
         api<{counterparties:Party[]}>("/api/counterparties"),
         api<{budgets:Budget[]}>("/api/shipment-budgets"),
         api<{documents:DocumentItem[]}>("/api/documents"),
         api<{comments:Comment[]}>("/api/comments"),
         api<{entries:Remittance[];allocations:RemittanceAllocation[]}>("/api/china-remittances")
       ]);
-      setShipments(s.shipments);setEntries(e.entries);setInvoices(i.invoices);setInvoiceLines(i.lines);
+      setShipments(s.shipments);setEntries(e.entries);setInvoices(i.invoices);setInvoiceLines(i.lines);setPurchaseExtras(i.purchaseExtras||[]);
       setParties(p.counterparties);setBudgets(b.budgets);setDocuments(d.documents);setComments(c.comments);
       setChinaRemittances(m.entries);setChinaAllocations(m.allocations);
     }catch(err){setError(err instanceof Error?err.message:"تعذر تحميل بيانات الشراكة");}
@@ -180,14 +185,15 @@ export default function Home(){
       invoiceNo:i.invoice_no,invoiceType:i.invoice_type,counterpartyId:i.counterparty_id||"",shipmentId:i.shipment_id||"",
       invoiceDate:i.invoice_date,dueDate:i.due_date||"",currency:i.currency,discount:String(i.discount_minor/100),
       tax:String(i.tax_minor/100),status:i.status,notes:i.notes||"",
-      lines:lines.length?lines.map(l=>({description:l.description,quantity:String(l.quantity),unit:l.unit,unitPrice:String(l.unit_price_minor/100)})):[{description:"",quantity:"1",unit:"pcs",unitPrice:""}]
+      lines:lines.length?lines.map(l=>({description:l.description,quantity:String(l.quantity),unit:l.unit,unitPrice:String(l.unit_price_minor/100)})):[{description:"",quantity:"1",unit:"pcs",unitPrice:""}],
+      purchaseExtras:purchaseExtras.filter(x=>x.invoice_id===i.id).map(x=>({category:x.category,description:x.description,amount:String(x.amount_minor/100),currency:x.currency,expenseDate:x.expense_date,notes:x.notes||""}))
     });
     setModal("invoice");
   }
   async function saveInvoice(e:FormEvent){
     e.preventDefault();setError("");
     try{
-      const payload={...invoiceForm,discount:Number(invoiceForm.discount||0),tax:Number(invoiceForm.tax||0),lines:invoiceForm.lines.map(l=>({...l,quantity:Number(l.quantity),unitPrice:Number(l.unitPrice)}))};
+      const payload={...invoiceForm,discount:Number(invoiceForm.discount||0),tax:Number(invoiceForm.tax||0),lines:invoiceForm.lines.map(l=>({...l,quantity:Number(l.quantity),unitPrice:Number(l.unitPrice)})),purchaseExtras:invoiceForm.invoiceType==="purchase"?invoiceForm.purchaseExtras.filter(x=>x.description.trim()&&Number(x.amount)>0).map(x=>({...x,amount:Number(x.amount)})):[]};
       const saved=await api<{ok:boolean;id?:string}>(editingId?"/api/invoices/"+editingId:"/api/invoices",{method:editingId?"PATCH":"POST",body:JSON.stringify(payload)});
       const invoiceId=editingId||saved.id;
       if(!invoiceId)throw new Error("تم حفظ الفاتورة لكن تعذر تحديد رقمها لربط المرفقات.");
@@ -308,9 +314,34 @@ export default function Home(){
     const out=entries.filter(x=>x.currency===c&&x.direction==="out"&&x.status!=="cancelled").reduce((a,x)=>a+x.amount_minor,0);
     const sales=invoices.filter(x=>x.currency===c&&x.invoice_type==="sale"&&x.status!=="cancelled").reduce((a,x)=>a+x.total_minor,0);
     const purchases=invoices.filter(x=>x.currency===c&&x.invoice_type==="purchase"&&x.status!=="cancelled").reduce((a,x)=>a+x.total_minor,0);
-    const costs=entries.filter(x=>x.currency===c&&x.entry_type==="expense"&&x.status!=="cancelled").reduce((a,x)=>a+x.amount_minor,0);
-    return {currency:c,inc,out,sales,purchases,costs,profit:sales-purchases-costs};
-  }).filter(x=>x.inc||x.out||x.sales||x.purchases||x.costs),[entries,invoices]);
+    const purchaseAdditions=purchaseExtras.filter(x=>x.currency===c).reduce((a,x)=>a+x.amount_minor,0);
+    const costs=entries.filter(x=>x.currency===c&&x.entry_type==="expense"&&x.status!=="cancelled"&&x.purpose!=="china_remittance").reduce((a,x)=>a+x.amount_minor,0);
+    return {currency:c,inc,out,sales,purchases,purchaseAdditions,costs,profit:sales-purchases-purchaseAdditions-costs};
+  }).filter(x=>x.inc||x.out||x.sales||x.purchases||x.purchaseAdditions||x.costs),[entries,invoices,purchaseExtras]);
+  const purchaseTotals=useMemo(()=>currencies.map(currency=>{
+    const invoicesTotal=invoices.filter(x=>x.invoice_type==="purchase"&&x.status!=="cancelled"&&x.currency===currency).reduce((n,x)=>n+x.total_minor,0);
+    const additions=purchaseExtras.filter(x=>x.currency===currency).reduce((n,x)=>n+x.amount_minor,0);
+    return {currency,invoicesTotal,additions,total:invoicesTotal+additions};
+  }).filter(x=>x.invoicesTotal||x.additions),[invoices,purchaseExtras]);
+  const saleProfitRows=useMemo(()=>invoices.filter(x=>x.invoice_type==="sale"&&x.status!=="cancelled").map(sale=>{
+    if(!sale.shipment_id)return {sale,status:"no_shipment" as const,allocatedCost:0,profit:0,margin:0};
+    const shipmentPurchases=invoices.filter(x=>x.shipment_id===sale.shipment_id&&x.invoice_type==="purchase"&&x.status!=="cancelled");
+    const shipmentExtras=purchaseExtras.filter(x=>x.shipment_id===sale.shipment_id);
+    const shipmentExpenses=entries.filter(x=>x.shipment_id===sale.shipment_id&&x.entry_type==="expense"&&x.status!=="cancelled"&&x.purpose!=="china_remittance");
+    const foreignCurrency=[...shipmentPurchases.map(x=>x.currency),...shipmentExtras.map(x=>x.currency),...shipmentExpenses.map(x=>x.currency)].some(x=>x!==sale.currency);
+    if(foreignCurrency)return {sale,status:"currency_mismatch" as const,allocatedCost:0,profit:0,margin:0};
+    if(!shipmentPurchases.length)return {sale,status:"no_purchase" as const,allocatedCost:0,profit:0,margin:0};
+    const salesInShipment=invoices.filter(x=>x.shipment_id===sale.shipment_id&&x.invoice_type==="sale"&&x.status!=="cancelled"&&x.currency===sale.currency);
+    const totalSales=salesInShipment.reduce((n,x)=>n+x.total_minor,0);
+    const totalCost=shipmentPurchases.reduce((n,x)=>n+x.total_minor,0)+shipmentExtras.reduce((n,x)=>n+x.amount_minor,0)+shipmentExpenses.reduce((n,x)=>n+x.amount_minor,0);
+    const allocatedCost=totalSales>0?Math.round(totalCost*sale.total_minor/totalSales):0;
+    const profit=sale.total_minor-allocatedCost;
+    return {sale,status:"calculated" as const,allocatedCost,profit,margin:sale.total_minor>0?profit/sale.total_minor*100:0};
+  }),[invoices,purchaseExtras,entries]);
+  const saleProfitTotals=useMemo(()=>currencies.map(currency=>{
+    const rows=saleProfitRows.filter(x=>x.sale.currency===currency&&x.status==="calculated");
+    return {currency,sales:rows.reduce((n,x)=>n+x.sale.total_minor,0),cost:rows.reduce((n,x)=>n+x.allocatedCost,0),profit:rows.reduce((n,x)=>n+x.profit,0),count:rows.length};
+  }).filter(x=>x.count),[saleProfitRows]);
   const chinaTotals=useMemo(()=>currencies.map(currency=>{
     const items=chinaRemittances.filter(x=>x.currency===currency);
     const transferred=items.reduce((n,x)=>n+x.amount_minor,0);
