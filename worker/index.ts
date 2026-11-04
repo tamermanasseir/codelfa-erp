@@ -128,6 +128,16 @@ async function handle(request: Request, env: Env): Promise<Response> {
     } catch (error) {
       console.error("CODELFA health audit schema check failed", error);
     }
+    if (url.searchParams.get("cryptoCheck") === "1") {
+      try {
+        await hashPassword("CODELFA temporary crypto self-test");
+        return json({ ok: true, cryptoCheck: "passed" });
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        console.error("CODELFA temporary crypto self-test failed", err);
+        return json({ ok: false, cryptoCheck: "failed", errorName: err.name, errorMessage: err.message.slice(0, 180) }, 500);
+      }
+    }
     return json({
       ok: true,
       database: "connected",
