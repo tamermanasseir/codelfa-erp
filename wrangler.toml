@@ -1,0 +1,9 @@
+name = "codelfa-partners-db-migrations"
+account_id = "af7b0acc01dab5ae2f2fa934e89560d6"
+compatibility_date = "2026-11-04"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "codelfa-partners-db"
+database_id = "6a863aef-dc83-4941-9dac-8ed93be6193a"
+migrations_dir = "migrations"
