@@ -357,6 +357,9 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
     const subtotal=prepared.reduce((n,l)=>n+l.total,0),discount=minor(data?.discount)||0,tax=minor(data?.tax)||0,total=subtotal-discount+tax;
     if(discount>subtotal || total<0) return fail("Discount cannot exceed the invoice subtotal.");
+    const prior=await env.DB.prepare("SELECT i.invoice_type,i.currency,i.total_minor,COALESCE((SELECT SUM(a.amount_minor) FROM invoice_payment_allocations a JOIN financial_entries fe ON fe.id=a.financial_entry_id WHERE a.invoice_id=i.id AND fe.archived_at IS NULL AND fe.status<>'cancelled'),0) AS paid_minor FROM invoices i WHERE i.id=? AND i.archived_at IS NULL").bind(invoiceMatch[1]).first<{invoice_type:string;currency:string;total_minor:number;paid_minor:number}>();
+    if(!prior) return fail("Invoice not found.",404);
+    if(prior.paid_minor>0 && (type!=="purchase" || curr!==prior.currency || total<prior.paid_minor)) return fail("This invoice has China remittances allocated. Keep it as a purchase in the same currency and do not reduce its total below the amount paid.",409);
     const statements:D1PreparedStatement[]=[
       env.DB.prepare("UPDATE invoices SET invoice_no=?,invoice_type=?,counterparty_id=?,shipment_id=?,invoice_date=?,due_date=?,currency=?,subtotal_minor=?,discount_minor=?,tax_minor=?,total_minor=?,status=?,notes=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
         .bind(invoiceNo,type,text(data?.counterpartyId,80)||null,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,status,text(data?.notes,3000)||null,invoiceMatch[1]),
@@ -369,6 +372,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
   }
   if (invoiceMatch && request.method === "DELETE") {
     if (!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const paid=await env.DB.prepare("SELECT COALESCE(SUM(a.amount_minor),0) AS amount FROM invoice_payment_allocations a JOIN financial_entries fe ON fe.id=a.financial_entry_id WHERE a.invoice_id=? AND fe.archived_at IS NULL AND fe.status<>'cancelled'").bind(invoiceMatch[1]).first<{amount:number}>();
+    if((paid?.amount||0)>0) return fail("This invoice has China payments allocated. Archive the related remittance first before archiving the invoice.",409);
     await env.DB.prepare("UPDATE invoices SET archived_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL").bind(invoiceMatch[1]).run();
     await audit(env,user.id,"archive","invoice",invoiceMatch[1]);
     return json({ok:true});
@@ -387,7 +392,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const d = await body(request);
     const amount = minor(d?.amount), curr = currency(d?.currency), date = validDate(d?.entryDate);
     const allocations = Array.isArray(d?.allocations) ? d.allocations as Record<string,unknown>[] : [];
-    if (amount === null || amount <= 0 || !curr || !date || allocations.length > 30) return fail("Enter a valid transfer amount, currency and date.");
+    if (amount === null || amount <= 0 || !curr || !date || allocations.length < 1 || allocations.length > 30) return fail("Enter a valid transfer amount, currency, date and at least one purchase invoice allocation.");
     const parsed: { invoiceId:string; amount:number }[] = [];
     let allocatedTotal = 0;
     for (const item of allocations) {
