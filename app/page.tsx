@@ -411,6 +411,30 @@ export default function Home(){
     const rows=saleProfitRows.filter(x=>x.sale.currency===currency&&x.status==="calculated");
     return {currency,sales:rows.reduce((n,x)=>n+x.sale.total_minor,0),cost:rows.reduce((n,x)=>n+x.allocatedCost,0),profit:rows.reduce((n,x)=>n+x.profit,0),count:rows.length};
   }).filter(x=>x.count),[saleProfitRows]);
+  const selectedOrder=orders.find(x=>x.id===selectedOrderId)||null;
+  const selectedOrderShipments=shipments.filter(x=>x.order_id===selectedOrderId);
+  const selectedOrderShipmentIds=new Set(selectedOrderShipments.map(x=>x.id));
+  const selectedOrderInvoices=invoices.filter(x=>x.order_id===selectedOrderId||(x.shipment_id!==null&&selectedOrderShipmentIds.has(x.shipment_id)));
+  const selectedOrderInvoiceIds=new Set(selectedOrderInvoices.map(x=>x.id));
+  const selectedOrderPurchases=selectedOrderInvoices.filter(x=>x.invoice_type==="purchase"&&x.status!=="cancelled");
+  const selectedOrderSales=selectedOrderInvoices.filter(x=>x.invoice_type==="sale"&&x.status!=="cancelled");
+  const selectedOrderExtras=purchaseExtras.filter(x=>selectedOrderInvoiceIds.has(x.invoice_id));
+  const selectedOrderEntries=entries.filter(x=>(x.order_id===selectedOrderId||(x.shipment_id!==null&&selectedOrderShipmentIds.has(x.shipment_id)))&&x.purpose!=="china_remittance"&&x.status!=="cancelled");
+  const selectedOrderExpenseEntries=selectedOrderEntries.filter(x=>x.entry_type==="expense");
+  const selectedOrderAllocations=chinaAllocations.filter(x=>selectedOrderInvoiceIds.has(x.invoice_id));
+  const selectedOrderTransferIds=new Set(selectedOrderAllocations.map(x=>x.financial_entry_id));
+  const selectedOrderTransfers=chinaRemittances.filter(x=>selectedOrderTransferIds.has(x.id));
+  const selectedOrderProfitRows=saleProfitRows.filter(x=>selectedOrderInvoiceIds.has(x.sale.id));
+  const selectedOrderTotals=currencies.map(currency=>{
+    const purchases=selectedOrderPurchases.filter(x=>x.currency===currency).reduce((n,x)=>n+x.total_minor,0);
+    const additions=selectedOrderExtras.filter(x=>x.currency===currency).reduce((n,x)=>n+x.amount_minor,0);
+    const sales=selectedOrderSales.filter(x=>x.currency===currency).reduce((n,x)=>n+x.total_minor,0);
+    const expenses=selectedOrderExpenseEntries.filter(x=>x.currency===currency).reduce((n,x)=>n+x.amount_minor,0);
+    const calculated=selectedOrderProfitRows.filter(x=>x.sale.currency===currency&&x.status==="calculated");
+    const allocatedCost=calculated.reduce((n,x)=>n+x.allocatedCost,0);
+    const profit=calculated.reduce((n,x)=>n+x.profit,0);
+    return {currency,purchases,additions,sales,expenses,totalCost:purchases+additions+expenses,allocatedCost,profit,calculatedCount:calculated.length,saleCount:selectedOrderSales.filter(x=>x.currency===currency).length};
+  }).filter(x=>x.purchases||x.additions||x.sales||x.expenses);
   const chinaTotals=useMemo(()=>currencies.map(currency=>{
     const items=chinaRemittances.filter(x=>x.currency===currency);
     const transferred=items.reduce((n,x)=>n+x.amount_minor,0);
