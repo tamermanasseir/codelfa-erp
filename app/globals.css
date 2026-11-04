@@ -933,3 +933,25 @@ body{background:linear-gradient(135deg,#eef2f6 0%,#f5f3ee 52%,#eaf0f4 100%)}
 .dashboard-kpi-card.kpi-green .dashboard-kpi-icon{background:#e3f2ec;color:#28745e}
 @media(max-width:950px){.dashboard-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-kpi-card{min-height:142px}}
 @media(max-width:520px){.dashboard-kpis{margin:20px 0 24px}.dashboard-kpis-heading h2{font-size:17px}.dashboard-kpi-grid{gap:9px}.dashboard-kpi-card{min-height:132px;padding:15px 13px;border-radius:14px}.dashboard-kpi-icon{left:12px;top:12px;width:31px;height:31px;border-radius:10px;font-size:16px}.dashboard-kpi-card small{font-size:10px;padding-left:30px}.dashboard-kpi-card strong{font-size:19px}.dashboard-kpi-card.kpi-gold strong{font-size:15px}.dashboard-kpi-card em{font-size:9px}}
+
+
+/* Final usability fixes: clear shipment actions, comments and contact editing */
+.shipment-row-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:220px;max-width:320px;padding:3px 0}
+.shipment-row-actions button{white-space:nowrap;min-height:31px;padding:7px 10px;border-radius:8px}
+.row-actions{gap:8px;flex-wrap:wrap}
+.party-actions{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px}
+.party-actions .text-link{padding:5px 0}
+.comment-compose{display:grid;grid-template-columns:minmax(0,1fr);gap:13px;align-items:stretch}
+.comment-body-field{display:grid;gap:7px}
+.comment-body-field textarea{width:100%;min-height:105px}
+.comment-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.comment-compose>.gold-button{justify-self:start;min-width:145px}
+.activity small{line-height:1.7}
+.brand-mark img{display:block;width:100%;height:100%;object-fit:cover;border-radius:inherit}
+.statement-guidance{margin:0 0 14px;padding:13px 15px;border:1px solid #e8ddc5;border-radius:11px;background:#fbf8f1;color:#6f5a35;font-size:11px;line-height:1.85}
+@media(max-width:650px){
+  .shipment-row-actions{min-width:190px;max-width:250px;gap:6px}
+  .shipment-row-actions button{font-size:10px;padding:7px 8px}
+  .comment-fields{grid-template-columns:1fr}
+  .party-actions{gap:13px}
+}
