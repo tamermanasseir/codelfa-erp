@@ -13,7 +13,7 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#07172c",
     orientation: "portrait",
     icons: [
-      { src: "/codelfa-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" },
+      { src: "/codelfa-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
       { src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png", purpose: "any" }
     ]
   };
