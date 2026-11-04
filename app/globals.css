@@ -142,6 +142,67 @@ footer span{letter-spacing:.5px}
 @media(max-width:520px){.top-actions{gap:5px}.user-chip{gap:5px}.user-chip .avatar{width:29px;height:29px}.chevron{font-size:17px;padding:4px}.mobile-brand b{font-size:9px}.hero-art{width:82px;height:82px}.hero-card{padding:20px 15px}.hero-copy h2{font-size:22px}.hero-copy p{font-size:10px;max-width:230px}.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.stat-card strong{font-size:20px}.currency-grid{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.welcome-row{display:block}.date-pill{display:inline-block;margin-top:10px}.page-heading{display:block}.page-heading .gold-button{margin-top:14px}.modal{padding:16px;border-radius:14px}.modal-backdrop{padding:8px}.modal-actions{position:sticky;bottom:-16px;background:white;padding:12px 0 0}.filter-row{display:block}footer{gap:10px;line-height:1.6}.table-wrap table{min-width:700px}}
 
 
+
+.invoice-attachments{
+  display:grid;
+  gap:13px;
+  padding:16px;
+  border:1px solid #dce4ec;
+  border-radius:14px;
+  background:linear-gradient(180deg,#fbfcfe,#f6f8fb);
+}
+.invoice-attachments>div:first-child>b{
+  display:block;
+  color:#18334e;
+  font-size:13px;
+  font-weight:900;
+  margin-bottom:5px;
+}
+.invoice-attachments .hint{
+  margin:0;
+  font-size:11px;
+  line-height:1.8;
+}
+.selected-files{
+  display:grid;
+  gap:8px;
+  padding-top:11px;
+  border-top:1px solid #e1e7ee;
+}
+.selected-files>b{
+  color:#314a64;
+  font-size:11px;
+  font-weight:800;
+}
+.selected-file{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:9px 11px;
+  border:1px solid #e1e7ee;
+  border-radius:9px;
+  background:#fff;
+  color:#344b63;
+  font-size:11px;
+  font-weight:600;
+}
+.selected-file span{overflow-wrap:anywhere}
+.document-link{
+  display:block;
+  color:#9a7029;
+  font-size:11px;
+  font-weight:700;
+  text-decoration:none;
+  padding:7px 0;
+}
+.document-link:hover{text-decoration:underline}
+@media(max-width:520px){
+  .invoice-attachments{padding:12px}
+  .invoice-attachments .form-grid{grid-template-columns:1fr}
+  .selected-file{align-items:flex-start}
+}
+
 /* Form field clarity and premium input treatment */
 label{
   color:#263d56;
