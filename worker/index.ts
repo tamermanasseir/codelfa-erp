@@ -24,7 +24,8 @@ type User = { id: string; username: string; display_name: string; role: "owner" 
 type SessionUser = User & { token_hash: string };
 
 const SESSION_SECONDS = 60 * 60 * 24 * 14;
-const PBKDF2_ITERATIONS = 310000;
+// Cloudflare Workers currently caps PBKDF2 at 100,000 iterations per operation.
+const PBKDF2_ITERATIONS = 100000;
 
 function json(data: unknown, status = 200, extra: HeadersInit = {}) {
   return new Response(JSON.stringify(data), {
@@ -127,16 +128,6 @@ async function handle(request: Request, env: Env): Promise<Response> {
       auditSchemaOk = true;
     } catch (error) {
       console.error("CODELFA health audit schema check failed", error);
-    }
-    if (url.searchParams.get("cryptoCheck") === "1") {
-      try {
-        await hashPassword("CODELFA temporary crypto self-test");
-        return json({ ok: true, cryptoCheck: "passed" });
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
-        console.error("CODELFA temporary crypto self-test failed", err);
-        return json({ ok: false, cryptoCheck: "failed", errorName: err.name, errorMessage: err.message.slice(0, 180) }, 500);
-      }
     }
     return json({
       ok: true,
