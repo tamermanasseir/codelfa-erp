@@ -381,3 +381,99 @@ input[type="checkbox"],input[type="radio"]{
   }
   label{font-size:12px}
 }
+
+
+/* v1.2 workflow-first navigation and operational panels */
+.workflow-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+  margin:-13px 0 28px;
+}
+.workflow-grid button{
+  position:relative;
+  min-height:104px;
+  display:grid;
+  grid-template-columns:36px 1fr;
+  grid-template-rows:auto auto;
+  align-content:center;
+  align-items:center;
+  gap:4px 11px;
+  text-align:right;
+  padding:16px 17px;
+  border:1px solid #dfe6ed;
+  border-radius:15px;
+  background:linear-gradient(145deg,#fff,#f8fafc);
+  color:#18334e;
+  box-shadow:0 7px 20px #112c4709;
+  transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+.workflow-grid button:hover{
+  transform:translateY(-3px);
+  border-color:#d4b16c;
+  box-shadow:0 12px 25px #112c4714;
+}
+.workflow-grid button span{
+  grid-row:1/3;
+  width:34px;height:34px;
+  display:grid;place-items:center;
+  border-radius:10px;
+  background:#102b46;
+  color:#f2d58f;
+  font-size:10px;font-weight:900;
+}
+.workflow-grid button b{font-size:13px;font-weight:900}
+.workflow-grid button small{font-size:10px;color:#657a90;font-weight:600;line-height:1.5}
+.action-group{display:flex;gap:8px;flex-wrap:wrap}
+.reset-panel{
+  margin-top:16px;
+  border-color:#ead8d5;
+  background:linear-gradient(145deg,#fff,#fffafa);
+}
+.reset-panel h3{margin:7px 0 8px;color:#8f3935;font-size:17px}
+.reset-panel p{max-width:850px;color:#5e6f80;font-size:12px;line-height:1.85;margin:0}
+.reset-panel>small{display:block;margin-top:13px;color:#8c5550;font-size:10px;line-height:1.7}
+.reset-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
+.danger-button{
+  border:1px solid #b64b45;
+  border-radius:10px;
+  padding:10px 15px;
+  color:#fff;
+  background:linear-gradient(135deg,#c95d55,#a53a36);
+  font-size:11px;font-weight:900;
+  box-shadow:0 5px 12px #a53a361e;
+}
+.danger-button:hover{filter:brightness(1.04);transform:translateY(-1px)}
+.allocation-summary{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+  padding:14px 15px;
+  border:1px solid #dfe6ed;
+  border-radius:12px;
+  background:#f7f9fb;
+  color:#52677d;
+  font-size:11px;
+}
+.allocation-summary span{display:flex;justify-content:space-between;gap:8px}
+.allocation-summary b{color:#18334e;font-variant-numeric:tabular-nums}
+.allocation-summary small{grid-column:1/-1;color:#7b8b9b;line-height:1.65}
+.invoice-line select{width:100%}
+@media(max-width:1180px){
+  .workflow-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:850px){
+  .workflow-grid{gap:8px;margin:-8px 0 22px}
+  .workflow-grid button{min-height:88px;padding:12px}
+  .workflow-grid button b{font-size:12px}
+  .workflow-grid button small{font-size:9px}
+  .action-group{margin-top:12px}
+  .reset-actions{display:grid;grid-template-columns:1fr}
+}
+@media(max-width:520px){
+  .workflow-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .workflow-grid button{grid-template-columns:29px 1fr;gap:3px 8px;padding:10px}
+  .workflow-grid button span{width:28px;height:28px;font-size:9px}
+  .allocation-summary{grid-template-columns:1fr}
+  .allocation-summary small{grid-column:auto}
+}
