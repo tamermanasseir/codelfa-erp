@@ -200,7 +200,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
   if (path === "/api/workspace/backup" && request.method === "GET") {
     if (!ownerOnly(user)) return fail("Owner access required", 403);
-    const tables = ["counterparties","shipments","shipment_budgets","invoices","invoice_lines","purchase_invoice_extras","financial_entries","invoice_payment_allocations","documents","attachments","comments","audit_log"];
+    const tables = ["counterparties","shipments","shipment_budgets","invoices","invoice_lines","purchase_invoice_extras","financial_entries","invoice_payment_allocations","shipment_loading_photos","documents","attachments","comments","audit_log"];
     const rows = await Promise.all(tables.map(async (table) => {
       const result = await env.DB.prepare("SELECT * FROM " + table).all();
       return [table, result.results] as const;
@@ -215,6 +215,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const statements = [
       "DELETE FROM invoice_payment_allocations",
       "DELETE FROM purchase_invoice_extras",
+      "DELETE FROM shipment_loading_photos",
       "DELETE FROM comments",
       "DELETE FROM documents",
       "DELETE FROM attachments",
@@ -514,6 +515,45 @@ async function handle(request: Request, env: Env): Promise<Response> {
     await env.DB.prepare("INSERT INTO shipment_budgets (id,shipment_id,budget_type,currency,expected_minor,notes,created_by) VALUES (?,?,?,?,?,?,?) ON CONFLICT(shipment_id,budget_type,currency) DO UPDATE SET expected_minor=excluded.expected_minor,notes=excluded.notes,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')")
       .bind(id,shipmentId,type,curr,expected,text(d?.notes,1000)||null,user.id).run();
     await audit(env,user.id,"upsert","shipment_budget",shipmentId,{type,currency:curr,expected});
+    return json({ok:true});
+  }
+
+  if (path === "/api/shipment-loading-photos" && request.method === "GET") {
+    const shipmentId=text(url.searchParams.get("shipmentId"),80);
+    if(!shipmentId) return fail("A shipment is required.");
+    const result=await env.DB.prepare("SELECT id,shipment_id,file_name,content_type,byte_size,photo_date,caption,uploaded_by,created_at FROM shipment_loading_photos WHERE shipment_id=? ORDER BY photo_date DESC,created_at DESC").bind(shipmentId).all();
+    return json({photos:result.results});
+  }
+  if (path === "/api/shipment-loading-photos" && request.method === "POST") {
+    if(!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const d=await body(request);
+    const shipmentId=text(d?.shipmentId,80),name=text(d?.fileName,180),mime=text(d?.contentType,100),data=text(d?.contentBase64,1300000);
+    const photoDate=validDate(d?.photoDate)||new Date().toISOString().slice(0,10);
+    if(!shipmentId||!name||!["image/jpeg","image/png","image/webp"].includes(mime)||!data) return fail("Choose a valid container image.");
+    let bytes:Uint8Array;
+    try{bytes=fromBase64(data);}catch{return fail("Invalid photo data.");}
+    if(bytes.length===0||bytes.length>900000) return fail("Each photo must be smaller than 900 KB.");
+    const shipment=await env.DB.prepare("SELECT id FROM shipments WHERE id=? AND archived_at IS NULL").bind(shipmentId).first<{id:string}>();
+    if(!shipment) return fail("Shipment not found.",404);
+    const id=randomId();
+    await env.DB.prepare("INSERT INTO shipment_loading_photos (id,shipment_id,file_name,content_type,byte_size,content_base64,photo_date,caption,uploaded_by) VALUES (?,?,?,?,?,?,?,?,?)")
+      .bind(id,shipmentId,name,mime,bytes.length,data,photoDate,text(d?.caption,500)||null,user.id).run();
+    await audit(env,user.id,"upload","shipment_loading_photo",id,{shipmentId,name,size:bytes.length,photoDate});
+    return json({ok:true,id},201);
+  }
+  const shipmentPhotoMatch=path.match(/^\\/api\\/shipment-loading-photos\\/([a-f0-9-]+)$/i);
+  if(shipmentPhotoMatch&&request.method==="GET"){
+    const photo=await env.DB.prepare("SELECT file_name,content_type,content_base64 FROM shipment_loading_photos WHERE id=?").bind(shipmentPhotoMatch[1]).first<{file_name:string;content_type:string;content_base64:string}>();
+    if(!photo) return fail("Photo not found.",404);
+    const safeName=encodeURIComponent(photo.file_name).replace(/'/g,"%27");
+    return new Response(fromBase64(photo.content_base64),{headers:{"content-type":photo.content_type,"content-disposition":"inline; filename*=UTF-8''"+safeName,"cache-control":"private, no-store","x-content-type-options":"nosniff"}});
+  }
+  if(shipmentPhotoMatch&&request.method==="DELETE"){
+    if(!ownerOnly(user)) return fail("Owner access required.",403);
+    const existing=await env.DB.prepare("SELECT id,shipment_id,file_name FROM shipment_loading_photos WHERE id=?").bind(shipmentPhotoMatch[1]).first<{id:string;shipment_id:string;file_name:string}>();
+    if(!existing) return fail("Photo not found.",404);
+    await env.DB.prepare("DELETE FROM shipment_loading_photos WHERE id=?").bind(shipmentPhotoMatch[1]).run();
+    await audit(env,user.id,"delete","shipment_loading_photo",shipmentPhotoMatch[1],{shipmentId:existing.shipment_id,name:existing.file_name});
     return json({ok:true});
   }
 
