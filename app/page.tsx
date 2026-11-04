@@ -27,6 +27,7 @@ type RemittanceAllocation = {id:string;invoice_id:string;financial_entry_id:stri
 type InvoiceLine = {id:string;invoice_id:string;description:string;quantity:number;unit:string;unit_price_minor:number;line_total_minor:number;notes:string|null};
 type PurchaseExtra = {id:string;invoice_id:string;category:string;description:string;amount_minor:number;currency:string;expense_date:string;notes:string|null;shipment_id:string|null;invoice_no:string};
 type PurchaseExtraForm = {category:string;description:string;amount:string;currency:string;expenseDate:string;notes:string};
+type ShipmentPhoto = {id:string;shipment_id:string;file_name:string;content_type:string;byte_size:number;photo_date:string;caption:string|null;uploaded_by:string;created_at:string};
 type Budget = {id:string;shipment_id:string;budget_type:"sale"|"purchase"|"expense";currency:string;expected_minor:number;notes:string|null};
 type DocumentItem = {id:string;target_type:string;target_id:string;file_name:string;content_type:string;byte_size:number;created_at:string};
 type Comment = {id:string;body:string;author:string;created_at:string;target_type:string;target_id:string|null};
@@ -66,6 +67,7 @@ export default function Home(){
   const [invoices,setInvoices]=useState<Invoice[]>([]);
   const [invoiceLines,setInvoiceLines]=useState<InvoiceLine[]>([]);
   const [purchaseExtras,setPurchaseExtras]=useState<PurchaseExtra[]>([]);
+  const [shipmentPhotos,setShipmentPhotos]=useState<ShipmentPhoto[]>([]);
   const [parties,setParties]=useState<Party[]>([]);
   const [budgets,setBudgets]=useState<Budget[]>([]);
   const [documents,setDocuments]=useState<DocumentItem[]>([]);
@@ -74,12 +76,17 @@ export default function Home(){
   const [chinaAllocations,setChinaAllocations]=useState<RemittanceAllocation[]>([]);
   const [error,setError]=useState("");
   const [notice,setNotice]=useState("");
-  const [modal,setModal]=useState<"shipment"|"invoice"|"entry"|"party"|"budget"|"partner"|"chinaPayment"|null>(null);
+  const [modal,setModal]=useState<"shipment"|"shipmentPhotos"|"invoice"|"entry"|"party"|"budget"|"partner"|"chinaPayment"|null>(null);
   const [editingId,setEditingId]=useState<string|null>(null);
   const [shipmentForm,setShipmentForm]=useState(blankShipment());
   const [entryForm,setEntryForm]=useState(blankEntry());
   const [invoiceForm,setInvoiceForm]=useState(blankInvoice());
   const [invoiceFiles,setInvoiceFiles]=useState<File[]>([]);
+  const [activePhotoShipment,setActivePhotoShipment]=useState<Shipment|null>(null);
+  const [photoFiles,setPhotoFiles]=useState<File[]>([]);
+  const [photoDate,setPhotoDate]=useState(new Date().toISOString().slice(0,10));
+  const [photoCaption,setPhotoCaption]=useState("");
+  const [uploadingPhotos,setUploadingPhotos]=useState(false);
   const [chinaPaymentForm,setChinaPaymentForm]=useState(blankChinaPayment);
   const [partyForm,setPartyForm]=useState({name:"",type:"supplier",phone:"",email:"",notes:""});
   const [budgetForm,setBudgetForm]=useState({shipmentId:"",budgetType:"sale",currency:"USD",expected:"",notes:""});
@@ -116,7 +123,7 @@ export default function Home(){
     if(!user)return;
     setError("");
     try{
-      const [s,e,i,p,b,d,c,m]=await Promise.all([
+      const [s,e,i,p,b,d,c,m,h]=await Promise.all([
         api<{shipments:Shipment[]}>("/api/shipments"),
         api<{entries:Entry[]}>("/api/financial-entries"),
         api<{invoices:Invoice[];lines:InvoiceLine[];purchaseExtras:PurchaseExtra[]}>("/api/invoices"),
@@ -124,11 +131,12 @@ export default function Home(){
         api<{budgets:Budget[]}>("/api/shipment-budgets"),
         api<{documents:DocumentItem[]}>("/api/documents"),
         api<{comments:Comment[]}>("/api/comments"),
-        api<{entries:Remittance[];allocations:RemittanceAllocation[]}>("/api/china-remittances")
+        api<{entries:Remittance[];allocations:RemittanceAllocation[]}>("/api/china-remittances"),
+        api<{photos:ShipmentPhoto[]}>("/api/shipment-loading-photos")
       ]);
       setShipments(s.shipments);setEntries(e.entries);setInvoices(i.invoices);setInvoiceLines(i.lines);setPurchaseExtras(i.purchaseExtras||[]);
       setParties(p.counterparties);setBudgets(b.budgets);setDocuments(d.documents);setComments(c.comments);
-      setChinaRemittances(m.entries);setChinaAllocations(m.allocations);
+      setChinaRemittances(m.entries);setChinaAllocations(m.allocations);setShipmentPhotos(h.photos||[]);
     }catch(err){setError(err instanceof Error?err.message:"تعذر تحميل بيانات الشراكة");}
   },[user]);
 
@@ -145,6 +153,36 @@ export default function Home(){
   async function signIn(e:FormEvent){e.preventDefault();setError("");try{const r=await api<{user:User}>("/api/login",{method:"POST",body:JSON.stringify({username:loginName,password:loginPassword})});setUser(r.user);setLoginPassword("");}catch(err){setError(err instanceof Error?err.message:"تعذر تسجيل الدخول");}}
   async function setup(e:FormEvent){e.preventDefault();setError("");try{await api("/api/setup",{method:"POST",headers:{"x-setup-key":setupKey},body:JSON.stringify({username:ownerName,displayName:ownerDisplay,password:ownerPassword})});setInitialized(true);setNotice("تم إنشاء حساب المدير. سجّل الدخول الآن.");setSetupKey("");setOwnerPassword("");}catch(err){setError(err instanceof Error?err.message:"تعذر إنشاء الحساب");}}
   async function signOut(){await api("/api/logout",{method:"POST"}).catch(()=>undefined);setUser(null);setSection("overview");}
+  function openShipmentPhotos(s:Shipment){
+    setActivePhotoShipment(s);setPhotoFiles([]);setPhotoDate(new Date().toISOString().slice(0,10));setPhotoCaption("");setModal("shipmentPhotos");
+  }
+  async function saveShipmentPhotos(e:FormEvent){
+    e.preventDefault();
+    if(!activePhotoShipment||!photoFiles.length)return;
+    setUploadingPhotos(true);setError("");
+    const failed:File[]=[];
+    const errors:string[]=[];
+    for(const original of photoFiles){
+      try{
+        const file=await prepareDocumentFile(original);
+        const bytes=new Uint8Array(await file.arrayBuffer());let binary="";
+        for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+        await api("/api/shipment-loading-photos",{method:"POST",body:JSON.stringify({shipmentId:activePhotoShipment.id,fileName:file.name,contentType:file.type,contentBase64:btoa(binary),photoDate,caption:photoCaption})});
+      }catch(err){
+        failed.push(original);errors.push(original.name+": "+(err instanceof Error?err.message:"تعذر رفع الصورة"));
+      }
+    }
+    setUploadingPhotos(false);
+    await loadData();
+    setPhotoFiles(failed);
+    if(failed.length){setError("تم رفع "+(photoFiles.length-failed.length)+" صورة، وتعذر رفع "+failed.length+": "+errors.join(" · "));}
+    else{setModal(null);setNotice("تم حفظ صور التحميل وربطها بالحاوية "+(activePhotoShipment.container_no||activePhotoShipment.reference_no||"")+".");}
+  }
+  async function deleteShipmentPhoto(photo:ShipmentPhoto){
+    if(!window.confirm("حذف صورة التحميل هذه نهائياً؟"))return;
+    try{await api("/api/shipment-loading-photos/"+photo.id,{method:"DELETE"});await loadData();setNotice("تم حذف الصورة.");}
+    catch(err){setError(err instanceof Error?err.message:"تعذر حذف الصورة");}
+  }
   function startShipmentEdit(s:Shipment){
     setEditingId(s.id);
     setShipmentForm({containerNo:s.container_no||"",referenceNo:s.reference_no||"",supplierName:s.supplier_name||"",origin:s.origin||"",destination:s.destination||"",status:s.status,purchaseDate:s.purchase_date||"",etd:s.etd||"",eta:s.eta||"",billOfLadingNo:s.bill_of_lading_no||"",notes:s.notes||""});
