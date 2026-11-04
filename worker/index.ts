@@ -377,7 +377,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
   if (path === "/api/china-remittances" && request.method === "GET") {
     const [entries, allocations] = await Promise.all([
       env.DB.prepare("SELECT f.id,f.entry_date,f.amount_minor,f.currency,f.reference_no,f.description,f.notes,f.payment_method,f.status,COALESCE((SELECT SUM(a.amount_minor) FROM invoice_payment_allocations a WHERE a.financial_entry_id=f.id),0) AS allocated_minor FROM financial_entries f WHERE f.entry_type='payment' AND f.direction='out' AND f.purpose='china_remittance' AND f.archived_at IS NULL AND f.status<>'cancelled' ORDER BY f.entry_date DESC,f.created_at DESC").all(),
-      env.DB.prepare("SELECT a.id,a.invoice_id,a.financial_entry_id,a.amount_minor,a.currency,i.invoice_no,c.name AS supplier_name,s.container_no FROM invoice_payment_allocations a JOIN financial_entries f ON f.id=a.financial_entry_id JOIN invoices i ON i.id=a.invoice_id LEFT JOIN counterparties c ON c.id=i.counterparty_id LEFT JOIN shipments s ON s.id=i.shipment_id WHERE f.archived_at IS NULL AND f.status<>'cancelled' ORDER BY f.entry_date DESC").all()
+      env.DB.prepare("SELECT a.id,a.invoice_id,a.financial_entry_id,a.amount_minor,a.currency,f.entry_date,i.invoice_no,c.name AS supplier_name,s.container_no FROM invoice_payment_allocations a JOIN financial_entries f ON f.id=a.financial_entry_id JOIN invoices i ON i.id=a.invoice_id LEFT JOIN counterparties c ON c.id=i.counterparty_id LEFT JOIN shipments s ON s.id=i.shipment_id WHERE f.archived_at IS NULL AND f.status<>'cancelled' ORDER BY f.entry_date DESC").all()
     ]);
     return json({ entries: entries.results, allocations: allocations.results });
   }
