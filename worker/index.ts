@@ -317,6 +317,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const date=validDate(data?.invoiceDate);
     const lines=Array.isArray(data?.lines)?data.lines as Record<string,unknown>[]:[];
     if (!invoiceNo || !["sale","purchase"].includes(type) || !curr || !date || lines.length<1 || lines.length>60) return fail("Complete invoice number, type, date, currency and at least one line.");
+    const partyId=text(data?.counterpartyId,80);
+    const requiredPartyType=type==="purchase"?"supplier":"customer";
+    const party=partyId?await env.DB.prepare("SELECT id FROM counterparties WHERE id=? AND counterparty_type=? AND archived_at IS NULL").bind(partyId,requiredPartyType).first<{id:string}>():null;
+    if(!party) return fail(type==="purchase"?"Select an active supplier for this purchase invoice.":"Select an active customer for this sales invoice.");
     const prepared: {id:string;description:string;quantity:number;unit:string;price:number;total:number;notes:string|null}[]=[];
     for (const line of lines) {
       const description=text(line.description,240);
@@ -333,7 +337,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const id=randomId();
     const statements: D1PreparedStatement[]=[
       env.DB.prepare("INSERT INTO invoices (id,invoice_no,invoice_type,counterparty_id,shipment_id,invoice_date,due_date,currency,subtotal_minor,discount_minor,tax_minor,total_minor,status,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(id,invoiceNo,type,text(data?.counterpartyId,80)||null,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,text(data?.status,20)||"issued",text(data?.notes,3000)||null,user.id)
+        .bind(id,invoiceNo,type,partyId,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,text(data?.status,20)||"issued",text(data?.notes,3000)||null,user.id)
     ];
     for (const line of prepared) statements.push(env.DB.prepare("INSERT INTO invoice_lines (id,invoice_id,description,quantity,unit,unit_price_minor,line_total_minor,notes) VALUES (?,?,?,?,?,?,?,?)").bind(line.id,id,line.description,line.quantity,line.unit,line.price,line.total,line.notes));
     statements.push(env.DB.prepare("INSERT INTO audit_log (id,actor_user_id,action,entity_type,entity_id,details_json) VALUES (?,?,?,?,?,?)").bind(randomId(),user.id,"create","invoice",id,JSON.stringify({invoiceNo,type,total,currency:curr})));
@@ -349,6 +353,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const lines=Array.isArray(data?.lines)?data.lines as Record<string,unknown>[]:[];
     const status=text(data?.status,20);
     if (!invoiceNo || !["sale","purchase"].includes(type) || !curr || !date || lines.length<1 || lines.length>60 || !["draft","issued","partially_paid","paid","cancelled"].includes(status)) return fail("Complete the invoice fields and at least one line.");
+    const partyId=text(data?.counterpartyId,80);
+    const requiredPartyType=type==="purchase"?"supplier":"customer";
+    const party=partyId?await env.DB.prepare("SELECT id FROM counterparties WHERE id=? AND counterparty_type=? AND archived_at IS NULL").bind(partyId,requiredPartyType).first<{id:string}>():null;
+    if(!party) return fail(type==="purchase"?"Select an active supplier for this purchase invoice.":"Select an active customer for this sales invoice.");
     const prepared:{id:string;description:string;quantity:number;unit:string;price:number;total:number;notes:string|null}[]=[];
     for(const line of lines){
       const description=text(line.description,240),quantity=Number(line.quantity),price=minor(line.unitPrice);
@@ -362,7 +370,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if(prior.paid_minor>0 && (type!=="purchase" || curr!==prior.currency || total<prior.paid_minor)) return fail("This invoice has China remittances allocated. Keep it as a purchase in the same currency and do not reduce its total below the amount paid.",409);
     const statements:D1PreparedStatement[]=[
       env.DB.prepare("UPDATE invoices SET invoice_no=?,invoice_type=?,counterparty_id=?,shipment_id=?,invoice_date=?,due_date=?,currency=?,subtotal_minor=?,discount_minor=?,tax_minor=?,total_minor=?,status=?,notes=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
-        .bind(invoiceNo,type,text(data?.counterpartyId,80)||null,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,status,text(data?.notes,3000)||null,invoiceMatch[1]),
+        .bind(invoiceNo,type,partyId,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,status,text(data?.notes,3000)||null,invoiceMatch[1]),
       env.DB.prepare("DELETE FROM invoice_lines WHERE invoice_id=?").bind(invoiceMatch[1])
     ];
     for(const line of prepared) statements.push(env.DB.prepare("INSERT INTO invoice_lines (id,invoice_id,description,quantity,unit,unit_price_minor,line_total_minor,notes) VALUES (?,?,?,?,?,?,?,?)").bind(line.id,invoiceMatch[1],line.description,line.quantity,line.unit,line.price,line.total,line.notes));
@@ -406,7 +414,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       parsed.push({invoiceId,amount:allocationAmount});
       allocatedTotal += allocationAmount;
     }
-    if (allocatedTotal > amount) return fail("Invoice allocations cannot exceed the actual transfer amount.");
+    if (allocatedTotal !== amount) return fail("The total assigned to purchase invoices must exactly equal the transferred amount. Record bank fees separately as an expense.");
     const id = randomId();
     const statements: D1PreparedStatement[] = [
       env.DB.prepare("INSERT INTO financial_entries (id,entry_type,purpose,reference_no,counterparty_id,shipment_id,entry_date,due_date,amount_minor,currency,direction,status,description,notes,created_by,payment_method,cheque_no,bank_name,paid_at) VALUES (?,'payment','china_remittance',?,NULL,NULL,?,NULL,?,?,'out','recorded',?,?,?,'bank_transfer',NULL,NULL,?)")
