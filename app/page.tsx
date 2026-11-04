@@ -6,19 +6,19 @@ import type { FormEvent, ReactNode } from "react";
 type Role = "owner" | "partner";
 type User = { id: string; username: string; displayName: string; role: Role };
 type Shipment = {
-  id:string; reference_no:string|null; container_no:string|null; supplier_name:string|null;
+  id:string; reference_no:string|null; container_no:string|null; supplier_name:string|null; order_id:string|null;
   origin:string|null; destination:string|null; status:string; purchase_date:string|null; etd:string|null;
   eta:string|null; bill_of_lading_no:string|null; notes:string|null; created_at:string;
 };
 type Entry = {
-  id:string; entry_type:string; purpose?:string; reference_no:string|null; counterparty_id:string|null; shipment_id:string|null;
+  id:string; entry_type:string; purpose?:string; reference_no:string|null; counterparty_id:string|null; shipment_id:string|null; order_id:string|null;
   entry_date:string; due_date:string|null; amount_minor:number; currency:string; direction:"in"|"out";
   status:string; description:string|null; notes:string|null; payment_method:string|null; cheque_no:string|null;
   bank_name:string|null; paid_at:string|null; counterparty_name:string|null; container_no:string|null;
 };
 type Party = {id:string;name:string;counterparty_type:"supplier"|"customer"|"other";phone:string|null;email:string|null;notes:string|null};
 type Invoice = {
-  id:string;invoice_no:string;invoice_type:"sale"|"purchase";counterparty_id:string|null;shipment_id:string|null;
+  id:string;invoice_no:string;invoice_type:"sale"|"purchase";counterparty_id:string|null;shipment_id:string|null;order_id:string|null;
   invoice_date:string;due_date:string|null;currency:string;subtotal_minor:number;discount_minor:number;tax_minor:number;
   total_minor:number;paid_minor:number;status:string;notes:string|null;counterparty_name:string|null;container_no:string|null;
 };
@@ -31,7 +31,8 @@ type ShipmentPhoto = {id:string;shipment_id:string;file_name:string;content_type
 type Budget = {id:string;shipment_id:string;budget_type:"sale"|"purchase"|"expense";currency:string;expected_minor:number;notes:string|null};
 type DocumentItem = {id:string;target_type:string;target_id:string;file_name:string;content_type:string;byte_size:number;created_at:string};
 type Comment = {id:string;body:string;author:string;created_at:string;target_type:string;target_id:string|null};
-type Section = "overview"|"shipments"|"purchases"|"sales"|"invoices"|"china"|"finance"|"parties"|"statements"|"reports"|"notes"|"team";
+type Section = "overview"|"orders"|"shipments"|"purchases"|"sales"|"invoices"|"china"|"finance"|"parties"|"statements"|"reports"|"notes"|"team";
+type Order = {id:string;order_no:string;title:string;customer_id:string|null;customer_name:string|null;status:string;start_date:string|null;delivery_date:string|null;notes:string|null;created_at:string;shipment_count:number;invoice_count:number};
 type InvoiceLineForm = {description:string;quantity:string;unit:string;unitArea:string;pricingBasis:"unit"|"sqm";unitPrice:string};
 const currencies=["USD","CNY","ILS","TRY"];
 const shipmentStatuses=[
@@ -49,9 +50,9 @@ async function api<T>(path:string,options:RequestInit={}):Promise<T>{
   if(!response.ok)throw new Error(data.error||"حدث خطأ");
   return data as T;
 }
-const blankShipment=()=>({containerNo:"",referenceNo:"",supplierName:"",origin:"Qingdao",destination:"Ashdod",status:"purchased",purchaseDate:"",etd:"",eta:"",billOfLadingNo:"",notes:""});
-const blankEntry=()=>({entryType:"payment",amount:"",currency:"USD",direction:"out",entryDate:new Date().toISOString().slice(0,10),dueDate:"",description:"",referenceNo:"",status:"recorded",counterpartyId:"",shipmentId:"",paymentMethod:"bank_transfer",chequeNo:"",bankName:"",paidAt:"",notes:""});
-const blankInvoice=()=>({invoiceNo:"",invoiceType:"sale",counterpartyId:"",shipmentId:"",invoiceDate:new Date().toISOString().slice(0,10),dueDate:"",currency:"USD",discount:"0",tax:"0",status:"issued",notes:"",lines:[{description:"",quantity:"1",unit:"pcs",unitArea:"1",pricingBasis:"sqm",unitPrice:""}] as InvoiceLineForm[],purchaseExtras:[] as PurchaseExtraForm[]});
+const blankShipment=()=>({containerNo:"",referenceNo:"",supplierName:"",orderId:"",origin:"Qingdao",destination:"Ashdod",status:"purchased",purchaseDate:"",etd:"",eta:"",billOfLadingNo:"",notes:""});
+const blankEntry=()=>({entryType:"payment",amount:"",currency:"USD",direction:"out",entryDate:new Date().toISOString().slice(0,10),dueDate:"",description:"",referenceNo:"",status:"recorded",counterpartyId:"",shipmentId:"",orderId:"",paymentMethod:"bank_transfer",chequeNo:"",bankName:"",paidAt:"",notes:""});
+const blankInvoice=()=>({invoiceNo:"",invoiceType:"sale",counterpartyId:"",shipmentId:"",orderId:"",invoiceDate:new Date().toISOString().slice(0,10),dueDate:"",currency:"USD",discount:"0",tax:"0",status:"issued",notes:"",lines:[{description:"",quantity:"1",unit:"pcs",unitArea:"1",pricingBasis:"sqm",unitPrice:""}] as InvoiceLineForm[],purchaseExtras:[] as PurchaseExtraForm[]});
 const purchaseExtraCategories=[["freight","أجور الشحن"],["customs","جمارك وتخليص"],["handling","مناولة وتحميل"],["cutting","قص وتجهيز"],["unloading","تنزيل"],["insurance","تأمين"],["other","إضافات أخرى"]];
 const blankPurchaseExtra=(currency="USD"):PurchaseExtraForm=>({category:"freight",description:"",amount:"",currency,expenseDate:new Date().toISOString().slice(0,10),notes:""});
 const blankChinaPayment=()=>({amount:"",currency:"USD",entryDate:new Date().toISOString().slice(0,10),referenceNo:"",notes:"",allocations:[{invoiceId:"",amount:""}]});
