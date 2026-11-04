@@ -407,6 +407,18 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const requiredPartyType=type==="purchase"?"supplier":"customer";
     const party=partyId?await env.DB.prepare("SELECT id FROM counterparties WHERE id=? AND counterparty_type=? AND archived_at IS NULL").bind(partyId,requiredPartyType).first<{id:string}>():null;
     if(!party) return fail(type==="purchase"?"Select an active supplier for this purchase invoice.":"Select an active customer for this sales invoice.");
+    const shipmentId=text(data?.shipmentId,80)||null;
+    let orderId=text(data?.orderId,80)||null;
+    if(shipmentId){
+      const linkedShipment=await env.DB.prepare("SELECT order_id FROM shipments WHERE id=? AND archived_at IS NULL").bind(shipmentId).first<{order_id:string|null}>();
+      if(!linkedShipment) return fail("Select an active shipment.",404);
+      if(orderId&&linkedShipment.order_id&&orderId!==linkedShipment.order_id) return fail("The selected order does not match the order assigned to this shipment.");
+      if(!orderId) orderId=linkedShipment.order_id;
+    }
+    if(orderId){
+      const order=await env.DB.prepare("SELECT id FROM orders WHERE id=? AND archived_at IS NULL").bind(orderId).first();
+      if(!order) return fail("Select an active order.");
+    }
     const prepared: {id:string;description:string;quantity:number;unit:string;unitArea:number;pricingBasis:"unit"|"sqm";price:number;total:number;notes:string|null}[]=[];
     for (const line of lines) {
       const description=text(line.description,240);
@@ -426,8 +438,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if(extraResult.error) return fail(extraResult.error);
     const id=randomId();
     const statements: D1PreparedStatement[]=[
-      env.DB.prepare("INSERT INTO invoices (id,invoice_no,invoice_type,counterparty_id,shipment_id,invoice_date,due_date,currency,subtotal_minor,discount_minor,tax_minor,total_minor,status,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .bind(id,invoiceNo,type,partyId,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,text(data?.status,20)||"issued",text(data?.notes,3000)||null,user.id)
+      env.DB.prepare("INSERT INTO invoices (id,invoice_no,invoice_type,counterparty_id,shipment_id,invoice_date,due_date,currency,subtotal_minor,discount_minor,tax_minor,total_minor,status,notes,created_by,order_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(id,invoiceNo,type,partyId,shipmentId,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,text(data?.status,20)||"issued",text(data?.notes,3000)||null,user.id,orderId)
     ];
     for (const line of prepared) statements.push(env.DB.prepare("INSERT INTO invoice_lines (id,invoice_id,description,quantity,unit,unit_area_m2,pricing_basis,unit_price_minor,line_total_minor,notes) VALUES (?,?,?,?,?,?,?,?,?,?)").bind(line.id,id,line.description,line.quantity,line.unit,line.unitArea,line.pricingBasis,line.price,line.total,line.notes));
     for (const extra of extraResult.extras) statements.push(env.DB.prepare("INSERT INTO purchase_invoice_extras (id,invoice_id,category,description,amount_minor,currency,expense_date,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?)")
@@ -449,6 +461,18 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const requiredPartyType=type==="purchase"?"supplier":"customer";
     const party=partyId?await env.DB.prepare("SELECT id FROM counterparties WHERE id=? AND counterparty_type=? AND archived_at IS NULL").bind(partyId,requiredPartyType).first<{id:string}>():null;
     if(!party) return fail(type==="purchase"?"Select an active supplier for this purchase invoice.":"Select an active customer for this sales invoice.");
+    const shipmentId=text(data?.shipmentId,80)||null;
+    let orderId=text(data?.orderId,80)||null;
+    if(shipmentId){
+      const linkedShipment=await env.DB.prepare("SELECT order_id FROM shipments WHERE id=? AND archived_at IS NULL").bind(shipmentId).first<{order_id:string|null}>();
+      if(!linkedShipment) return fail("Select an active shipment.",404);
+      if(orderId&&linkedShipment.order_id&&orderId!==linkedShipment.order_id) return fail("The selected order does not match the order assigned to this shipment.");
+      if(!orderId) orderId=linkedShipment.order_id;
+    }
+    if(orderId){
+      const order=await env.DB.prepare("SELECT id FROM orders WHERE id=? AND archived_at IS NULL").bind(orderId).first();
+      if(!order) return fail("Select an active order.");
+    }
     const prepared:{id:string;description:string;quantity:number;unit:string;unitArea:number;pricingBasis:"unit"|"sqm";price:number;total:number;notes:string|null}[]=[];
     for(const line of lines){
       const description=text(line.description,240),quantity=Number(line.quantity),unitArea=Number(line.unitArea ?? 1);
@@ -466,8 +490,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const existingExtra=await env.DB.prepare("SELECT COUNT(*) AS count FROM purchase_invoice_extras WHERE invoice_id=?").bind(invoiceMatch[1]).first<{count:number}>();
     if((existingExtra?.count||0)>0 && type!=="purchase") return fail("This invoice has additional purchase costs. Keep it as a purchase invoice or remove the additional costs first.",409);
     const statements:D1PreparedStatement[]=[
-      env.DB.prepare("UPDATE invoices SET invoice_no=?,invoice_type=?,counterparty_id=?,shipment_id=?,invoice_date=?,due_date=?,currency=?,subtotal_minor=?,discount_minor=?,tax_minor=?,total_minor=?,status=?,notes=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
-        .bind(invoiceNo,type,partyId,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,status,text(data?.notes,3000)||null,invoiceMatch[1]),
+      env.DB.prepare("UPDATE invoices SET invoice_no=?,invoice_type=?,counterparty_id=?,shipment_id=?,invoice_date=?,due_date=?,currency=?,subtotal_minor=?,discount_minor=?,tax_minor=?,total_minor=?,status=?,notes=?,order_id=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
+        .bind(invoiceNo,type,partyId,shipmentId,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,status,text(data?.notes,3000)||null,orderId,invoiceMatch[1]),
       env.DB.prepare("DELETE FROM invoice_lines WHERE invoice_id=?").bind(invoiceMatch[1]),
       env.DB.prepare("DELETE FROM purchase_invoice_extras WHERE invoice_id=?").bind(invoiceMatch[1])
     ];
@@ -542,9 +566,21 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const amount=minor(data?.amount);
     const date=validDate(data?.entryDate);
     if (!["purchase","sale","payment","expense","addition","cheque"].includes(type) || !curr || !["in","out"].includes(direction) || amount===null || amount<=0 || !date) return fail("Check the entry type, amount, currency, direction and date.");
+    const shipmentId=text(data?.shipmentId,80)||null;
+    let orderId=text(data?.orderId,80)||null;
+    if(shipmentId){
+      const linkedShipment=await env.DB.prepare("SELECT order_id FROM shipments WHERE id=? AND archived_at IS NULL").bind(shipmentId).first<{order_id:string|null}>();
+      if(!linkedShipment) return fail("Select an active shipment.",404);
+      if(orderId&&linkedShipment.order_id&&orderId!==linkedShipment.order_id) return fail("The selected order does not match the selected shipment.");
+      if(!orderId) orderId=linkedShipment.order_id;
+    }
+    if(orderId){
+      const order=await env.DB.prepare("SELECT id FROM orders WHERE id=? AND archived_at IS NULL").bind(orderId).first();
+      if(!order) return fail("Select an active order.");
+    }
     const id=randomId();
-    await env.DB.prepare("INSERT INTO financial_entries (id,entry_type,reference_no,counterparty_id,shipment_id,entry_date,due_date,amount_minor,currency,direction,status,description,notes,created_by,payment_method,cheque_no,bank_name,paid_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .bind(id,type,text(data?.referenceNo,80)||null,text(data?.counterpartyId,80)||null,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,amount,curr,direction,text(data?.status,20)||"recorded",text(data?.description,240)||null,text(data?.notes,3000)||null,user.id,text(data?.paymentMethod,30)||null,text(data?.chequeNo,80)||null,text(data?.bankName,120)||null,validDate(data?.paidAt)||null).run();
+    await env.DB.prepare("INSERT INTO financial_entries (id,entry_type,reference_no,counterparty_id,shipment_id,entry_date,due_date,amount_minor,currency,direction,status,description,notes,created_by,payment_method,cheque_no,bank_name,paid_at,order_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(id,type,text(data?.referenceNo,80)||null,text(data?.counterpartyId,80)||null,shipmentId,date,validDate(data?.dueDate)||null,amount,curr,direction,text(data?.status,20)||"recorded",text(data?.description,240)||null,text(data?.notes,3000)||null,user.id,text(data?.paymentMethod,30)||null,text(data?.chequeNo,80)||null,text(data?.bankName,120)||null,validDate(data?.paidAt)||null,orderId).run();
     await audit(env,user.id,"create","financial_entry",id,{type,amount,currency:curr});
     return json({ok:true,id},201);
   }
@@ -555,8 +591,20 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const amount=minor(d?.amount),curr=currency(d?.currency),date=validDate(d?.entryDate),direction=text(d?.direction,3);
     const type=text(d?.entryType,20);
     if (amount===null || amount<=0 || !curr || !date || !["in","out"].includes(direction) || !["purchase","sale","payment","expense","addition","cheque"].includes(type)) return fail("Check the financial entry fields.");
-    await env.DB.prepare("UPDATE financial_entries SET entry_type=?,reference_no=?,counterparty_id=?,shipment_id=?,entry_date=?,due_date=?,amount_minor=?,currency=?,direction=?,status=?,description=?,notes=?,payment_method=?,cheque_no=?,bank_name=?,paid_at=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
-      .bind(type,text(d?.referenceNo,80)||null,text(d?.counterpartyId,80)||null,text(d?.shipmentId,80)||null,date,validDate(d?.dueDate)||null,amount,curr,direction,text(d?.status,20)||"recorded",text(d?.description,240)||null,text(d?.notes,3000)||null,text(d?.paymentMethod,30)||null,text(d?.chequeNo,80)||null,text(d?.bankName,120)||null,validDate(d?.paidAt)||null,entryMatch[1]).run();
+    const shipmentId=text(d?.shipmentId,80)||null;
+    let orderId=text(d?.orderId,80)||null;
+    if(shipmentId){
+      const linkedShipment=await env.DB.prepare("SELECT order_id FROM shipments WHERE id=? AND archived_at IS NULL").bind(shipmentId).first<{order_id:string|null}>();
+      if(!linkedShipment) return fail("Select an active shipment.",404);
+      if(orderId&&linkedShipment.order_id&&orderId!==linkedShipment.order_id) return fail("The selected order does not match the selected shipment.");
+      if(!orderId) orderId=linkedShipment.order_id;
+    }
+    if(orderId){
+      const order=await env.DB.prepare("SELECT id FROM orders WHERE id=? AND archived_at IS NULL").bind(orderId).first();
+      if(!order) return fail("Select an active order.");
+    }
+    await env.DB.prepare("UPDATE financial_entries SET entry_type=?,reference_no=?,counterparty_id=?,shipment_id=?,entry_date=?,due_date=?,amount_minor=?,currency=?,direction=?,status=?,description=?,notes=?,payment_method=?,cheque_no=?,bank_name=?,paid_at=?,order_id=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
+      .bind(type,text(d?.referenceNo,80)||null,text(d?.counterpartyId,80)||null,shipmentId,date,validDate(d?.dueDate)||null,amount,curr,direction,text(d?.status,20)||"recorded",text(d?.description,240)||null,text(d?.notes,3000)||null,text(d?.paymentMethod,30)||null,text(d?.chequeNo,80)||null,text(d?.bankName,120)||null,validDate(d?.paidAt)||null,orderId,entryMatch[1]).run();
     await audit(env,user.id,"update","financial_entry",entryMatch[1]);
     return json({ok:true});
   }
