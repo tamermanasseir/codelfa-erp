@@ -549,7 +549,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const safeName=encodeURIComponent(photo.file_name).replace(/'/g,"%27");
     return new Response(fromBase64(photo.content_base64),{headers:{"content-type":photo.content_type,"content-disposition":"inline; filename*=UTF-8''"+safeName,"cache-control":"private, no-store","x-content-type-options":"nosniff"}});
   }
-  if(shipmentPhotoMatch&&request.method==="DELETE"){
+  if(shipmentPhotoId&&request.method==="DELETE"){
     if(!ownerOnly(user)) return fail("Owner access required.",403);
     const existing=await env.DB.prepare("SELECT id,shipment_id,file_name FROM shipment_loading_photos WHERE id=?").bind(shipmentPhotoId).first<{id:string;shipment_id:string;file_name:string}>();
     if(!existing) return fail("Photo not found.",404);
