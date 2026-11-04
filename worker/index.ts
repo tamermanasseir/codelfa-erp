@@ -222,7 +222,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     await audit(env,user.id,"create","order",id,{orderNo,title,status});
     return json({ok:true,id},201);
   }
-  const orderMatch=path.match(/^\\/api\\/orders\\/([a-f0-9-]+)$/i);
+  const orderMatch=path.startsWith("/api/orders/")?path.slice("/api/orders/".length):"";
   if(orderMatch&&request.method==="PATCH"){
     if(!ownerOnly(user)) return fail("Partner access is read-only.",403);
     const d=await body(request),orderNo=text(d?.orderNo,80),title=text(d?.title,200);
@@ -234,17 +234,17 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
     try{
       const result=await env.DB.prepare("UPDATE orders SET order_no=?,title=?,customer_id=?,status=?,start_date=?,delivery_date=?,notes=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
-        .bind(orderNo,title,customerId,status,validDate(d?.startDate)||null,validDate(d?.deliveryDate)||null,text(d?.notes,3000)||null,orderMatch[1]).run();
+        .bind(orderNo,title,customerId,status,validDate(d?.startDate)||null,validDate(d?.deliveryDate)||null,text(d?.notes,3000)||null,orderMatch).run();
       if(!result.meta.changes) return fail("Order not found.",404);
     }catch(error){console.error("CODELFA order update failed",error);return fail("Could not update order. Check that its number is unique.",409);}
-    await audit(env,user.id,"update","order",orderMatch[1],{orderNo,status});
+    await audit(env,user.id,"update","order",orderMatch,{orderNo,status});
     return json({ok:true});
   }
   if(orderMatch&&request.method==="DELETE"){
     if(!ownerOnly(user)) return fail("Partner access is read-only.",403);
-    const result=await env.DB.prepare("UPDATE orders SET archived_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL").bind(orderMatch[1]).run();
+    const result=await env.DB.prepare("UPDATE orders SET archived_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL").bind(orderMatch).run();
     if(!result.meta.changes) return fail("Order not found.",404);
-    await audit(env,user.id,"archive","order",orderMatch[1]);
+    await audit(env,user.id,"archive","order",orderMatch);
     return json({ok:true});
   }
 
@@ -265,7 +265,6 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const statements = [
       "DELETE FROM invoice_payment_allocations",
       "DELETE FROM purchase_invoice_extras",
-      "DELETE FROM orders",
       "DELETE FROM shipment_loading_photos",
       "DELETE FROM comments",
       "DELETE FROM documents",
@@ -275,6 +274,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       "DELETE FROM financial_entries",
       "DELETE FROM invoices",
       "DELETE FROM shipments",
+      "DELETE FROM orders",
       "DELETE FROM counterparties"
     ].map((sql) => env.DB.prepare(sql));
     statements.push(env.DB.prepare("INSERT INTO audit_log (id,actor_user_id,action,entity_type,entity_id,details_json) VALUES (?,?,?,?,?,?)")
