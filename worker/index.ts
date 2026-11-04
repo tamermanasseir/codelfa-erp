@@ -2,6 +2,7 @@ interface Env {
   DB: D1Database;
   BOOTSTRAP_SECRET: string;
   APP_ORIGIN?: string;
+  ASSETS: { fetch(request: Request): Promise<Response> };
 }
 
 interface D1Result<T = Record<string, unknown>> {
@@ -108,7 +109,7 @@ function validDate(value: unknown) {
 }
 async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith("/api/")) return fail("Not found", 404);
+  if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
   if (!sameOrigin(request, env)) return fail("Origin not allowed", 403);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "allow": "GET, POST, OPTIONS" } });
   if (url.pathname === "/api/health" && request.method === "GET") {
@@ -164,6 +165,27 @@ async function handle(request: Request, env: Env): Promise<Response> {
     return user ? json({ user: { id: user.id, username: user.username, displayName: user.display_name, role: user.role } }) : fail("Not signed in", 401);
   }
   if (!user) return fail("Sign in required", 401);
+
+  if (url.pathname === "/api/users" && request.method === "POST") {
+    if (!ownerOnly(user)) return fail("Owner access required.", 403);
+    const data = await body(request);
+    const username = text(data?.username, 40).toLowerCase();
+    const displayName = text(data?.displayName, 100);
+    const password = typeof data?.password === "string" ? data.password : "";
+    if (!/^[a-z0-9._-]{3,40}$/.test(username) || displayName.length < 2 || password.length < 12) {
+      return fail("Use a valid username, display name, and password of at least 12 characters.");
+    }
+    const id = randomId();
+    try {
+      const passwordHash = await hashPassword(password);
+      await env.DB.prepare("INSERT INTO users (id, username, display_name, password_hash, role) VALUES (?, ?, ?, ?, 'partner')")
+        .bind(id, username, displayName, passwordHash).run();
+      await audit(env, user.id, "create", "partner_user", id, { username });
+      return json({ ok: true, id, username }, 201);
+    } catch {
+      return fail("Could not create partner. The username may already exist.", 409);
+    }
+  }
 
   if (url.pathname === "/api/shipments" && request.method === "GET") {
     const result = await env.DB.prepare(
