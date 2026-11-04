@@ -2,6 +2,8 @@ name: Validate CODELFA PARTNERS build
 
 on:
   workflow_dispatch:
+  push:
+    branches: [partners-v1]
 
 permissions:
   contents: read
