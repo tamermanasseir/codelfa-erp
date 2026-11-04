@@ -104,6 +104,26 @@ function validDate(value: unknown) {
   const v = text(value, 30);
   return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
 }
+type PreparedPurchaseExtra = { id: string; category: string; description: string; amount: number; currency: string; expenseDate: string; notes: string | null };
+function preparePurchaseExtras(value: unknown, invoiceType: string, invoiceDate: string) {
+  const rows = Array.isArray(value) ? value as Record<string,unknown>[] : [];
+  if (rows.length > 40) return { extras: [] as PreparedPurchaseExtra[], error: "You can add up to 40 additional purchase cost lines per invoice." };
+  if (invoiceType !== "purchase" && rows.length) return { extras: [] as PreparedPurchaseExtra[], error: "Additional purchase costs can only be attached to purchase invoices." };
+  const allowed = ["freight","customs","handling","cutting","unloading","insurance","other"];
+  const extras: PreparedPurchaseExtra[] = [];
+  for (const row of rows) {
+    const category = text(row.category,30);
+    const description = text(row.description,240);
+    const amount = minor(row.amount);
+    const curr = currency(row.currency);
+    const expenseDate = validDate(row.expenseDate) || invoiceDate;
+    if (!allowed.includes(category) || !description || amount === null || amount <= 0 || !curr || !expenseDate) {
+      return { extras: [] as PreparedPurchaseExtra[], error: "Check each additional purchase cost: type, description, amount, currency and date are required." };
+    }
+    extras.push({ id: randomId(), category, description, amount, currency: curr, expenseDate, notes: text(row.notes,1000) || null });
+  }
+  return { extras, error: null as string | null };
+}
 function minor(value: unknown) {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount < 0 || amount > 90000000000000) return null;
@@ -180,7 +200,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
   if (path === "/api/workspace/backup" && request.method === "GET") {
     if (!ownerOnly(user)) return fail("Owner access required", 403);
-    const tables = ["counterparties","shipments","shipment_budgets","invoices","invoice_lines","financial_entries","invoice_payment_allocations","documents","attachments","comments","audit_log"];
+    const tables = ["counterparties","shipments","shipment_budgets","invoices","invoice_lines","purchase_invoice_extras","financial_entries","invoice_payment_allocations","documents","attachments","comments","audit_log"];
     const rows = await Promise.all(tables.map(async (table) => {
       const result = await env.DB.prepare("SELECT * FROM " + table).all();
       return [table, result.results] as const;
@@ -194,6 +214,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if (text(data?.confirmation, 40) !== "RESET CODELFA") return fail("Type RESET CODELFA to confirm this operation.", 400);
     const statements = [
       "DELETE FROM invoice_payment_allocations",
+      "DELETE FROM purchase_invoice_extras",
       "DELETE FROM comments",
       "DELETE FROM documents",
       "DELETE FROM attachments",
@@ -304,9 +325,12 @@ async function handle(request: Request, env: Env): Promise<Response> {
   }
 
   if (path === "/api/invoices" && request.method === "GET") {
-    const invoices=await env.DB.prepare("SELECT i.*,c.name AS counterparty_name,s.container_no,COALESCE((SELECT SUM(a.amount_minor) FROM invoice_payment_allocations a JOIN financial_entries fe ON fe.id=a.financial_entry_id WHERE a.invoice_id=i.id AND fe.archived_at IS NULL AND fe.status<>'cancelled'),0) AS paid_minor FROM invoices i LEFT JOIN counterparties c ON c.id=i.counterparty_id LEFT JOIN shipments s ON s.id=i.shipment_id WHERE i.archived_at IS NULL ORDER BY i.invoice_date DESC,i.created_at DESC").all();
-    const lines=await env.DB.prepare("SELECT l.* FROM invoice_lines l JOIN invoices i ON i.id=l.invoice_id WHERE i.archived_at IS NULL ORDER BY l.rowid").all();
-    return json({invoices:invoices.results,lines:lines.results});
+    const [invoices,lines,extras]=await Promise.all([
+      env.DB.prepare("SELECT i.*,c.name AS counterparty_name,s.container_no,COALESCE((SELECT SUM(a.amount_minor) FROM invoice_payment_allocations a JOIN financial_entries fe ON fe.id=a.financial_entry_id WHERE a.invoice_id=i.id AND fe.archived_at IS NULL AND fe.status<>'cancelled'),0) AS paid_minor FROM invoices i LEFT JOIN counterparties c ON c.id=i.counterparty_id LEFT JOIN shipments s ON s.id=i.shipment_id WHERE i.archived_at IS NULL ORDER BY i.invoice_date DESC,i.created_at DESC").all(),
+      env.DB.prepare("SELECT l.* FROM invoice_lines l JOIN invoices i ON i.id=l.invoice_id WHERE i.archived_at IS NULL ORDER BY l.rowid").all(),
+      env.DB.prepare("SELECT e.*,i.shipment_id,i.invoice_no FROM purchase_invoice_extras e JOIN invoices i ON i.id=e.invoice_id WHERE i.invoice_type='purchase' AND i.archived_at IS NULL ORDER BY e.expense_date,e.created_at").all()
+    ]);
+    return json({invoices:invoices.results,lines:lines.results,purchaseExtras:extras.results});
   }
   if (path === "/api/invoices" && request.method === "POST") {
     if (!ownerOnly(user)) return fail("Partner access is read-only.",403);
@@ -334,12 +358,16 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const tax=minor(data?.tax)||0;
     const total=subtotal-discount+tax;
     if (discount>subtotal || total<0) return fail("Discount cannot exceed the invoice subtotal.");
+    const extraResult=preparePurchaseExtras(data?.purchaseExtras,type,date);
+    if(extraResult.error) return fail(extraResult.error);
     const id=randomId();
     const statements: D1PreparedStatement[]=[
       env.DB.prepare("INSERT INTO invoices (id,invoice_no,invoice_type,counterparty_id,shipment_id,invoice_date,due_date,currency,subtotal_minor,discount_minor,tax_minor,total_minor,status,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
         .bind(id,invoiceNo,type,partyId,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,text(data?.status,20)||"issued",text(data?.notes,3000)||null,user.id)
     ];
     for (const line of prepared) statements.push(env.DB.prepare("INSERT INTO invoice_lines (id,invoice_id,description,quantity,unit,unit_price_minor,line_total_minor,notes) VALUES (?,?,?,?,?,?,?,?)").bind(line.id,id,line.description,line.quantity,line.unit,line.price,line.total,line.notes));
+    for (const extra of extraResult.extras) statements.push(env.DB.prepare("INSERT INTO purchase_invoice_extras (id,invoice_id,category,description,amount_minor,currency,expense_date,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?)")
+      .bind(extra.id,id,extra.category,extra.description,extra.amount,extra.currency,extra.expenseDate,extra.notes,user.id));
     statements.push(env.DB.prepare("INSERT INTO audit_log (id,actor_user_id,action,entity_type,entity_id,details_json) VALUES (?,?,?,?,?,?)").bind(randomId(),user.id,"create","invoice",id,JSON.stringify({invoiceNo,type,total,currency:curr})));
     try { await env.DB.batch(statements); }
     catch(error) { console.error("CODELFA invoice create failed",error); return fail("Could not save invoice. Check that its number is unique.",409); }
@@ -368,12 +396,19 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const prior=await env.DB.prepare("SELECT i.invoice_type,i.currency,i.total_minor,COALESCE((SELECT SUM(a.amount_minor) FROM invoice_payment_allocations a JOIN financial_entries fe ON fe.id=a.financial_entry_id WHERE a.invoice_id=i.id AND fe.archived_at IS NULL AND fe.status<>'cancelled'),0) AS paid_minor FROM invoices i WHERE i.id=? AND i.archived_at IS NULL").bind(invoiceMatch[1]).first<{invoice_type:string;currency:string;total_minor:number;paid_minor:number}>();
     if(!prior) return fail("Invoice not found.",404);
     if(prior.paid_minor>0 && (type!=="purchase" || curr!==prior.currency || total<prior.paid_minor)) return fail("This invoice has China remittances allocated. Keep it as a purchase in the same currency and do not reduce its total below the amount paid.",409);
+    const extraResult=preparePurchaseExtras(data?.purchaseExtras,type,date);
+    if(extraResult.error) return fail(extraResult.error);
+    const existingExtra=await env.DB.prepare("SELECT COUNT(*) AS count FROM purchase_invoice_extras WHERE invoice_id=?").bind(invoiceMatch[1]).first<{count:number}>();
+    if((existingExtra?.count||0)>0 && type!=="purchase") return fail("This invoice has additional purchase costs. Keep it as a purchase invoice or remove the additional costs first.",409);
     const statements:D1PreparedStatement[]=[
       env.DB.prepare("UPDATE invoices SET invoice_no=?,invoice_type=?,counterparty_id=?,shipment_id=?,invoice_date=?,due_date=?,currency=?,subtotal_minor=?,discount_minor=?,tax_minor=?,total_minor=?,status=?,notes=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
         .bind(invoiceNo,type,partyId,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,status,text(data?.notes,3000)||null,invoiceMatch[1]),
-      env.DB.prepare("DELETE FROM invoice_lines WHERE invoice_id=?").bind(invoiceMatch[1])
+      env.DB.prepare("DELETE FROM invoice_lines WHERE invoice_id=?").bind(invoiceMatch[1]),
+      env.DB.prepare("DELETE FROM purchase_invoice_extras WHERE invoice_id=?").bind(invoiceMatch[1])
     ];
     for(const line of prepared) statements.push(env.DB.prepare("INSERT INTO invoice_lines (id,invoice_id,description,quantity,unit,unit_price_minor,line_total_minor,notes) VALUES (?,?,?,?,?,?,?,?)").bind(line.id,invoiceMatch[1],line.description,line.quantity,line.unit,line.price,line.total,line.notes));
+    for(const extra of extraResult.extras) statements.push(env.DB.prepare("INSERT INTO purchase_invoice_extras (id,invoice_id,category,description,amount_minor,currency,expense_date,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?)")
+      .bind(extra.id,invoiceMatch[1],extra.category,extra.description,extra.amount,extra.currency,extra.expenseDate,extra.notes,user.id));
     statements.push(env.DB.prepare("INSERT INTO audit_log (id,actor_user_id,action,entity_type,entity_id,details_json) VALUES (?,?,?,?,?,?)").bind(randomId(),user.id,"update","invoice",invoiceMatch[1],JSON.stringify({invoiceNo,total,currency:curr})));
     try{await env.DB.batch(statements);}catch(error){console.error("CODELFA invoice update failed",error);return fail("Could not update invoice. Check that its number is unique.",409);}
     return json({ok:true,totalMinor:total});
