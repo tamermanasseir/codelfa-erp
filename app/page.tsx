@@ -1,337 +1,118 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
+import { useMemo, useState } from "react";
+
+type Section = "overview" | "shipments" | "purchases" | "sales" | "payments" | "expenses" | "checks" | "documents" | "reports" | "notes";
+type Shipment = { id: string; container: string; supplier: string; route: string; status: string; eta: string; cost: string };
+const initialShipments: Shipment[] = [
+  { id: "SHP-026", container: "OOLU0890025", supplier: "Xiamen Sofiko", route: "Qingdao → Ashdod", status: "قيد الشحن البحري", eta: "22 Dec 2026", cost: "$28,450" },
+  { id: "SHP-025", container: "MRSU6859427", supplier: "Fujian Stone", route: "Qingdao → Ashdod", status: "تم الاستلام في المستودع", eta: "تم الوصول", cost: "$31,800" },
+  { id: "SHP-024", container: "TGHU7712041", supplier: "Foshan Ceramics", route: "Ningbo → Ashdod", status: "قيد التخليص الجمركي", eta: "08 Nov 2026", cost: "$19,600" },
+];
+const nav: { id: Section; label: string; icon: string }[] = [
+  { id: "overview", label: "الرئيسية", icon: "⌂" },
+  { id: "shipments", label: "الشحنات والحاويات", icon: "▤" },
+  { id: "purchases", label: "المشتريات", icon: "＋" },
+  { id: "sales", label: "المبيعات", icon: "↗" },
+  { id: "payments", label: "الحوالات والدفعات", icon: "⇄" },
+  { id: "expenses", label: "التكاليف والإضافات", icon: "◈" },
+  { id: "checks", label: "الشيكات", icon: "▣" },
+  { id: "documents", label: "الفواتير والمستندات", icon: "▧" },
+  { id: "reports", label: "الكشوفات والتقارير", icon: "▥" },
+  { id: "notes", label: "الملاحظات", icon: "✎" },
+];
+const statuses = ["تم الشراء", "تم تأكيد الطلب", "تم حجز الشحن البحري", "تم التحميل وإصدار بوليصة الشحن", "غادرت الميناء", "قيد الشحن البحري", "وصلت إلى الميناء", "قيد التخليص الجمركي", "تم الإفراج عنها", "تم الاستلام في المستودع", "مكتملة ومغلقة"];
 
 export default function Home() {
-  const [role, setRole] = useState<'admin' | 'partner'>('admin');
-  const [lang, setLang] = useState<'ar' | 'en' | 'tr'>('ar');
-  const [activeTab, setActiveTab] = useState<'shipments' | 'purchases' | 'warehouse' | 'customers' | 'checks' | 'invoice' | 'ashdod'>('shipments');
+  const [section, setSection] = useState<Section>("overview");
+  const [role, setRole] = useState<"admin" | "partner">("admin");
+  const [lang, setLang] = useState<"ar" | "en">("ar");
+  const [shipments, setShipments] = useState(initialShipments);
+  const [modal, setModal] = useState(false);
+  const [newContainer, setNewContainer] = useState("");
+  const [newSupplier, setNewSupplier] = useState("");
+  const [newStatus, setNewStatus] = useState(statuses[0]);
+  const [comment, setComment] = useState("");
+  const [comments, setComments] = useState(["تم تحديث موعد الوصول المتوقع للحاوية OOLU0890025.", "يرجى مراجعة فاتورة الشحن البحري قبل اعتماد الدفعة."]);
+  const [files, setFiles] = useState<string[]>([]);
+  const [notice, setNotice] = useState("هذه معاينة تشغيلية للواجهة؛ سيتم تفعيل الدخول المشترك والحفظ الآمن بعد ربط قاعدة البيانات المستقلة.");
+  const [filter, setFilter] = useState("الكل");
 
-  const isAr = lang === 'ar';
-  const dir = isAr ? 'rtl' : 'ltr';
+  const isAr = lang === "ar";
+  const filteredShipments = useMemo(() => filter === "الكل" ? shipments : shipments.filter(s => s.status === filter), [shipments, filter]);
+  const title = nav.find(n => n.id === section)?.label ?? "الرئيسية";
 
-  const t = {
-    ar: {
-      admin: "المدير (تحكم كامل)",
-      partner: "الشريك (عرض فقط)",
-      bannerAdmin: "وضع المدير: يمكنك إضافة وتعديل الحاويات، الشحنات، والمشتريات.",
-      bannerPartner: "وضع الشريك: تصفح الأرصدة، الحاويات، والتقارير بصلاحية القراءة فقط.",
-      tabShipments: "📦 الحاويات والشحنات",
-      tabPurchases: "🛒 المشتريات والموردين",
-      tabWarehouse: "🏭 المخازن والمستودعات",
-      tabCustomers: "👥 الزبائن والعملاء",
-      tabChecks: "💰 الشيكات والمالية",
-      tabInvoice: "📄 الفواتير المختومة",
-      tabAshdod: "⚓ ميناء أشدود",
-      addBtn: "إضافة جديدة",
-      printBtn: "طباعة الفاتورة الرسمية"
-    },
-    en: {
-      admin: "Admin (Full Access)",
-      partner: "Partner (Read-Only)",
-      bannerAdmin: "Admin Mode: Manage containers, shipments, and purchases.",
-      bannerPartner: "Partner Mode: View balances and reports (Read-only).",
-      tabShipments: "📦 Containers & Shipments",
-      tabPurchases: "🛒 Purchases & Suppliers",
-      tabWarehouse: "🏭 Warehouse & Inventory",
-      tabCustomers: "👥 Customers",
-      tabChecks: "💰 Checks & Finance",
-      tabInvoice: "📄 Stamped Invoices",
-      tabAshdod: "⚓ Ashdod Port",
-      addBtn: "Add New",
-      printBtn: "Print Official Invoice"
-    },
-    tr: {
-      admin: "Yönetici (Tam Yetki)",
-      partner: "Ortak (Salt Okunur)",
-      bannerAdmin: "Yönetici Modu: Konteyner ve sevkiyat yönetimi.",
-      bannerPartner: "Ortak Modu: Bakiye ve raporları görüntüleme.",
-      tabShipments: "📦 Konteynerler",
-      tabPurchases: "🛒 Satın Alma",
-      tabWarehouse: "🏭 Depo",
-      tabCustomers: "👥 Müşteriler",
-      tabChecks: "💰 Çekler & Finans",
-      tabInvoice: "📄 Mühürlü Faturalar",
-      tabAshdod: "⚓ Aşdod Limanı",
-      addBtn: "Yeni Ekle",
-      printBtn: "Faturayı Yazdır"
-    }
-  }[lang];
+  function addShipment() {
+    if (!newContainer.trim()) return;
+    setShipments([{ id: "SHP-" + String(shipments.length + 27).padStart(3, "0"), container: newContainer.trim().toUpperCase(), supplier: newSupplier || "غير محدد", route: "يحدد لاحقاً", status: newStatus, eta: "غير محدد", cost: "—" }, ...shipments]);
+    setNewContainer(""); setNewSupplier(""); setNewStatus(statuses[0]); setModal(false);
+    setNotice("تمت إضافة الحاوية إلى معاينة الواجهة. سيصبح الحفظ مشتركاً بعد ربط قاعدة البيانات.");
+  }
+  function addComment() {
+    if (!comment.trim()) return;
+    setComments([comment.trim(), ...comments]); setComment("");
+  }
 
   return (
-    <div dir={dir} style={{ backgroundColor: '#F8FAFC', minHeight: '100vh', color: '#1E293B', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-      
-      {/* Header - Clean White & Professional */}
-      <header style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #E2E8F0', padding: '16px 32px', position: 'sticky', top: 0, zIndex: 50, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#0F172A', color: '#D4AF37', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '20px' }}>
-              C
-            </div>
-            <div>
-              <h1 style={{ fontSize: '20px', fontWeight: '800', color: '#0F172A', margin: 0, letterSpacing: '0.5px' }}>CODELFA <span style={{ color: '#D4AF37', fontSize: '12px' }}>ERP</span></h1>
-              <p style={{ fontSize: '10px', color: '#64748B', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>Italian Porcelain & Marble Trade</p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* Role Switcher */}
-            <div style={{ backgroundColor: '#F1F5F9', padding: '4px', borderRadius: '8px', border: '1px solid #E2E8F0', display: 'flex', gap: '4px' }}>
-              <button
-                onClick={() => setRole('admin')}
-                style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', border: 'none', cursor: 'pointer', backgroundColor: role === 'admin' ? '#0F172A' : 'transparent', color: role === 'admin' ? '#FFFFFF' : '#64748B', transition: 'all 0.2s' }}
-              >
-                {t.admin}
-              </button>
-              <button
-                onClick={() => setRole('partner')}
-                style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', border: 'none', cursor: 'pointer', backgroundColor: role === 'partner' ? '#0F172A' : 'transparent', color: role === 'partner' ? '#FFFFFF' : '#64748B', transition: 'all 0.2s' }}
-              >
-                {t.partner}
-              </button>
-            </div>
-
-            {/* Language Selector */}
-            <select
-              value={lang}
-              onChange={(e) => setLang(e.target.value as 'ar' | 'en' | 'tr')}
-              style={{ backgroundColor: '#FFFFFF', border: '1px solid #CBD5E1', padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 'bold', color: '#0F172A', cursor: 'pointer', outline: 'none' }}
-            >
-              <option value="ar">العربية (AR)</option>
-              <option value="en">English (EN)</option>
-              <option value="tr">Türkçe (TR)</option>
-            </select>
-          </div>
-
+    <div className={isAr ? "app-shell" : "app-shell ltr"} dir={isAr ? "rtl" : "ltr"}>
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-mark">C<span>✦</span></div>
+          <div><div className="brand-name">CODELFA <b>PARTNERS</b></div><div className="brand-sub">PRIVATE BUSINESS PORTAL</div></div>
         </div>
-      </header>
+        <div className="workspace"><span className="workspace-dot" /> مساحة الشراكة <small>حساب مشترك</small></div>
+        <div className="nav-caption">إدارة الأعمال</div>
+        <nav>{nav.map(item => <button key={item.id} className={section === item.id ? "nav-item active" : "nav-item"} onClick={() => setSection(item.id)}><span className="nav-icon">{item.icon}</span><span>{item.label}</span>{section === item.id && <i />}</button>)}</nav>
+        <div className="sidebar-bottom"><div className="secure"><span>⌑</span><div><b>مساحة خاصة وآمنة</b><small>وصول للمستخدمين المصرح لهم</small></div></div><div className="version">CODELFA PARTNERS · 1.0</div></div>
+      </aside>
 
-      {/* Main Content Area */}
-      <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '28px 24px' }}>
-        
-        {/* Notice Banner */}
-        <div style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', borderLeft: '4px solid #3B82F6', padding: '14px 20px', borderRadius: '10px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#1E40AF', fontSize: '13px' }}>
-          <span style={{ fontWeight: '500' }}>{role === 'admin' ? t.bannerAdmin : t.bannerPartner}</span>
-          <span style={{ fontSize: '10px', fontWeight: 'bold', backgroundColor: '#DBEAFE', color: '#1D4ED8', padding: '3px 10px', borderRadius: '20px', textTransform: 'uppercase' }}>
-            {role === 'admin' ? 'FULL ACCESS' : 'READ ONLY'}
-          </span>
-        </div>
-
-        {/* Dashboard Box */}
-        <div style={{ backgroundColor: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)', overflow: 'hidden' }}>
-          
-          {/* Navigation Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC', overflowX: 'auto' }}>
-            {[
-              { id: 'shipments', label: t.tabShipments },
-              { id: 'purchases', label: t.tabPurchases },
-              { id: 'warehouse', label: t.tabWarehouse },
-              { id: 'customers', label: t.tabCustomers },
-              { id: 'checks', label: t.tabChecks },
-              { id: 'invoice', label: t.tabInvoice },
-              { id: 'ashdod', label: t.tabAshdod },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                style={{ padding: '14px 20px', fontSize: '12px', fontWeight: 'bold', border: 'none', background: 'none', cursor: 'pointer', borderBottom: activeTab === tab.id ? '3px solid #0F172A' : '3px solid transparent', color: activeTab === tab.id ? '#0F172A' : '#64748B', whiteSpace: 'nowrap', transition: 'all 0.2s' }}
-              >
-                {tab.label}
-              </button>
-            ))}
+      <main className="main-area">
+        <header className="topbar">
+          <div className="mobile-brand"><div className="brand-mark small">C<span>✦</span></div><b>CODELFA PARTNERS</b></div>
+          <div className="crumb">مساحة الشراكة <span>/</span> <b>{title}</b></div>
+          <div className="top-actions">
+            <button className="icon-btn" title="الإشعارات">♧<i /></button>
+            <select className="lang-select" value={lang} onChange={e => setLang(e.target.value as "ar" | "en")}><option value="ar">العربية</option><option value="en">English</option></select>
+            <div className="user-chip"><div className="avatar">{role === "admin" ? "ت" : "أ"}</div><div><b>{role === "admin" ? "تمـر — المدير" : "د. أبو خليل"}</b><small>{role === "admin" ? "مدير النظام" : "شريك · مشاهدة وتعليق"}</small></div><button className="chevron" onClick={() => setRole(role === "admin" ? "partner" : "admin")} title="تبديل معاينة الدور">⌄</button></div>
           </div>
+        </header>
 
-          <div style={{ padding: '28px' }}>
-            
-            {/* Tab 1: Shipments */}
-            {activeTab === 'shipments' && (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#0F172A', margin: 0 }}>ماتريكس الحاويات والشحنات النشطة</h3>
-                  {role === 'admin' && (
-                    <button style={{ backgroundColor: '#0F172A', color: '#D4AF37', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
-                      + {t.addBtn}
-                    </button>
-                  )}
-                </div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left', fontSize: '13px' }}>
-                    <thead>
-                      <tr style={{ backgroundColor: '#F8FAFC', color: '#475569', borderBottom: '2px solid #E2E8F0' }}>
-                        <th style={{ padding: '12px' }}>رقم الحاوية</th>
-                        <th style={{ padding: '12px' }}>الحجم</th>
-                        <th style={{ padding: '12px' }}>الصنف</th>
-                        <th style={{ padding: '12px' }}>الألواح (PCS)</th>
-                        <th style={{ padding: '12px' }}>المساحة (m²)</th>
-                        <th style={{ padding: '12px' }}>سعر الشراء</th>
-                        <th style={{ padding: '12px' }}>سعر البيع</th>
-                        <th style={{ padding: '12px' }}>تاريخ الوصول</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
-                        <td style={{ padding: '12px', fontWeight: 'bold', color: '#0F172A', fontFamily: 'monospace' }}>MSCU-901823</td>
-                        <td style={{ padding: '12px' }}><span style={{ backgroundColor: '#E0F2FE', color: '#0369A1', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>40ft HQ</span></td>
-                        <td style={{ padding: '12px', fontWeight: '600' }}>بورسلين Calacatta Gold (إيطالي)</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace' }}>784 PCS</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace', color: '#0D9488', fontWeight: 'bold' }}>4,014.08 m²</td>
-                        <td style={{ padding: '12px', color: '#64748B', fontFamily: 'monospace' }}>$17.00</td>
-                        <td style={{ padding: '12px', fontWeight: 'bold', color: '#16A34A', fontFamily: 'monospace' }}>$28.00</td>
-                        <td style={{ padding: '12px', color: '#64748B', fontSize: '12px' }}>2026-11-15</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+        <div className="content">
+          <div className="welcome-row"><div><div className="eyebrow">PRIVATE PARTNERSHIP OVERVIEW</div><h1>{section === "overview" ? "صباح الخير، تمـر" : title}</h1><p>{section === "overview" ? "إليك ملخص حركة الأعمال والشحنات والحسابات." : "متابعة واضحة ومنظمة لجميع تفاصيل العمل المشترك."}</p></div><div className="date-pill">◷ <span>الأربعاء، 4 نوفمبر 2026</span></div></div>
+          {notice && <div className="preview-notice"><span>ⓘ</span>{notice}<button onClick={() => setNotice("")}>×</button></div>}
 
-            {/* Tab 2: Purchases */}
-            {activeTab === 'purchases' && (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#0F172A', margin: 0 }}>سجل المشتريات وعقود المصانع (Xiamen Sofiko)</h3>
-                </div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left', fontSize: '13px' }}>
-                    <thead>
-                      <tr style={{ backgroundColor: '#F8FAFC', color: '#475569', borderBottom: '2px solid #E2E8F0' }}>
-                        <th style={{ padding: '12px' }}>رقم الطلبية (PO)</th>
-                        <th style={{ padding: '12px' }}>المورد</th>
-                        <th style={{ padding: '12px' }}>عدد الحاويات</th>
-                        <th style={{ padding: '12px' }}>إجمالي المبلغ</th>
-                        <th style={{ padding: '12px' }}>الحالة</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
-                        <td style={{ padding: '12px', fontWeight: 'bold', color: '#0F172A', fontFamily: 'monospace' }}>WA2639</td>
-                        <td style={{ padding: '12px', fontWeight: '600' }}>Xiamen Sofiko Stone Co.</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace' }}>4 x 40' HQ</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace', color: '#D4AF37', fontWeight: 'bold' }}>$68,473.92</td>
-                        <td style={{ padding: '12px' }}><span style={{ backgroundColor: '#DCFCE7', color: '#166534', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>معتمد</span></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+          {section === "overview" && <>
+            <div className="hero-card"><div className="hero-copy"><div className="hero-kicker">CODELFA · BUSINESS PARTNERSHIP</div><h2>كل تفاصيل العمل،<br/><em>في مكان واحد.</em></h2><p>متابعة الشحنات والمشتريات والمبيعات والتدفقات المالية بكل وضوح.</p><button onClick={() => setSection("shipments")} className="gold-button">استعراض الشحنات <span>←</span></button></div><div className="hero-art"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="hero-cube">C<span>✦</span></div><div className="hero-label">TRUST · CLARITY · PARTNERSHIP</div></div></div>
+            <div className="section-heading"><div><h2>نظرة عامة</h2><p>ملخص الأداء المالي والتشغيلي</p></div><span className="period">كل الفترات　⌄</span></div>
+            <div className="stats-grid">
+              <Stat icon="▤" label="إجمالي الحاويات" value="08" note="3 شحنات قيد المتابعة" />
+              <Stat icon="↗" label="إجمالي المبيعات" value="$125,400" note="قيمة المبيعات المسجلة" />
+              <Stat icon="⇄" label="إجمالي المدفوعات" value="$78,250" note="حوالات ودفعات مسجلة" />
+              <Stat icon="◈" label="الربح المتوقع" value="$32,800" note="حسب بيانات العمليات" gold />
+            </div>
+            <div className="two-col">
+              <section className="panel"><div className="panel-head"><div><h3>حركة الشحنات</h3><p>آخر الشحنات المحدثة</p></div><button className="text-link" onClick={() => setSection("shipments")}>عرض الكل ←</button></div><ShipmentTable rows={shipments.slice(0,3)} /></section>
+              <section className="panel"><div className="panel-head"><div><h3>آخر الملاحظات</h3><p>تحديثات ومتابعات الشراكة</p></div><button className="text-link" onClick={() => setSection("notes")}>كل الملاحظات ←</button></div><div className="activity-list">{comments.slice(0,3).map((c,i)=><div className="activity" key={i}><div className="activity-icon">✎</div><div><b>{c}</b><small>تحديث ضمن مساحة الشراكة</small></div></div>)}</div></section>
+            </div>
+          </>}
 
-            {/* Tab 3: Warehouse */}
-            {activeTab === 'warehouse' && (
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#0F172A', marginBottom: '20px' }}>المخازن والمستودعات (أرصدة البورسلين والرخام)</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                  <div style={{ backgroundColor: '#F8FAFC', padding: '20px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
-                    <p style={{ fontSize: '12px', color: '#64748B', margin: 0 }}>إجمالي المساحة بالمخازن</p>
-                    <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#0F172A', fontFamily: 'monospace', margin: '6px 0 0 0' }}>4,961.28 m²</p>
-                  </div>
-                  <div style={{ backgroundColor: '#F8FAFC', padding: '20px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
-                    <p style={{ fontSize: '12px', color: '#64748B', margin: 0 }}>إجمالي الألواح المتوفرة</p>
-                    <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#16A34A', fontFamily: 'monospace', margin: '6px 0 0 0' }}>969 PCS</p>
-                  </div>
-                </div>
-              </div>
-            )}
+          {section === "shipments" && <section className="panel full-panel"><div className="panel-head"><div><h3>الشحنات والحاويات</h3><p>متابعة مراحل الشحن من الشراء حتى الاستلام</p></div>{role === "admin" && <button className="gold-button compact" onClick={() => setModal(true)}>＋ إضافة حاوية</button>}</div><div className="toolbar"><select value={filter} onChange={e=>setFilter(e.target.value)}><option>الكل</option>{statuses.map(s=><option key={s}>{s}</option>)}</select><span>{filteredShipments.length} شحنات</span></div><ShipmentTable rows={filteredShipments} detailed /></section>}
 
-            {/* Tab 4: Customers */}
-            {activeTab === 'customers' && (
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#0F172A', marginBottom: '20px' }}>سجل الزبائن والعملاء</h3>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left', fontSize: '13px' }}>
-                    <thead>
-                      <tr style={{ backgroundColor: '#F8FAFC', color: '#475569', borderBottom: '2px solid #E2E8F0' }}>
-                        <th style={{ padding: '12px' }}>اسم الشركة / العميل</th>
-                        <th style={{ padding: '12px' }}>المنطقة</th>
-                        <th style={{ padding: '12px' }}>الرقم الضريبي (VAT)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
-                        <td style={{ padding: '12px', fontWeight: 'bold' }}>Selimoglu Stone Company</td>
-                        <td style={{ padding: '12px', color: '#64748B' }}>Qalqilya / فلسطين</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace' }}>562338103</td>
-                      </tr>
-                      <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
-                        <td style={{ padding: '12px', fontWeight: 'bold' }}>Kamel Abu Al-Rub Stone Co.</td>
-                        <td style={{ padding: '12px', color: '#64748B' }}>Qabatia - Jenin</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace' }}>562350439</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+          {["purchases","sales","payments","expenses","checks","documents","reports"].includes(section) && <section className="panel full-panel"><div className="panel-head"><div><h3>{title}</h3><p>سجل موحد مرتبط بالشحنات والحسابات</p></div>{role === "admin" && <button className="gold-button compact" onClick={()=>setNotice("سيتم تفعيل نموذج الإدخال والحفظ المشترك عند ربط قاعدة البيانات.")}>＋ إضافة جديد</button>}</div><div className="empty-state"><div className="empty-icon">{nav.find(n=>n.id===section)?.icon}</div><h3>مساحة {title}</h3><p>سيظهر هنا سجل العمليات والمرفقات والتفاصيل المرتبطة بكل عملية.</p><div className="feature-chips"><span>ربط بالحاوية</span><span>فواتير PDF وصور</span><span>سجل التعديلات</span><span>كشف حساب قابل للطباعة</span></div></div></section>}
 
-            {/* Tab 5: Checks & Finance */}
-            {activeTab === 'checks' && (
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#0F172A', marginBottom: '20px' }}>إدارة الشيكات والمالية</h3>
-                <div style={{ backgroundColor: '#F8FAFC', padding: '20px', borderRadius: '10px', border: '1px solid #E2E8F0', fontSize: '13px', color: '#475569' }}>
-                  <p style={{ margin: 0 }}>لا توجد شيكات مستحقة حالياً. يمكنك متابعة تواريخ الاستحقاق والدفعات النقدية بدقة وسهولة.</p>
-                </div>
-              </div>
-            )}
-
-            {/* Tab 6: Invoice */}
-            {activeTab === 'invoice' && (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#0F172A', margin: 0 }}>الفاتورة الرسمية مع الختم الإيطالي</h3>
-                  <button onClick={() => window.print()} style={{ backgroundColor: '#0F172A', color: '#D4AF37', border: 'none', padding: '8px 20px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    {t.printBtn}
-                  </button>
-                </div>
-                <div style={{ backgroundColor: '#FFFFFF', color: '#1E293B', padding: '36px', borderRadius: '10px', maxWidth: '650px', margin: '0 auto', border: '1px solid #CBD5E1', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0F172A', paddingBottom: '16px', marginBottom: '24px' }}>
-                    <div>
-                      <h2 style={{ fontSize: '24px', fontWeight: '900', margin: 0, color: '#0F172A' }}>CODELFA</h2>
-                      <p style={{ fontSize: '11px', color: '#64748B', margin: '2px 0 0 0', textTransform: 'uppercase' }}>Italian Porcelain & Marble Trade Co.</p>
-                    </div>
-                    <div style={{ textAlign: isAr ? 'left' : 'right', fontSize: '12px', color: '#475569' }}>
-                      <p style={{ fontWeight: 'bold', margin: 0 }}>#INV-2026-089</p>
-                      <p style={{ margin: '2px 0 0 0' }}>13/10/2026</p>
-                    </div>
-                  </div>
-
-                  {/* Stamp */}
-                  <div style={{ width: '120px', height: '120px', borderRadius: '50%', border: '3px double #B45309', margin: '30px auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#B45309', transform: 'rotate(-5deg)', backgroundColor: '#FFFBEB' }}>
-                    <span style={{ fontWeight: '900', fontSize: '11px', color: '#0F172A' }}>CODELFA</span>
-                    <span style={{ fontSize: '7px', letterSpacing: '1px', textTransform: 'uppercase' }}>Official Seal</span>
-                    <span style={{ fontSize: '7px', color: '#64748B' }}>ITALY 2026</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Tab 7: Ashdod */}
-            {activeTab === 'ashdod' && (
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#0F172A', marginBottom: '20px' }}>عطلات وإغلاقات ميناء أشدود (2026-2027)</h3>
-                <div style={{ backgroundColor: '#F8FAFC', padding: '16px', borderRadius: '10px', border: '1px solid #E2E8F0', fontSize: '13px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #E2E8F0' }}>
-                    <span style={{ color: '#475569' }}>رأس السنة العبرية (Rosh Hashanah)</span>
-                    <span style={{ fontWeight: 'bold', color: '#D4AF37', fontFamily: 'monospace' }}>12-13 سبتمبر 2026</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0' }}>
-                    <span style={{ color: '#475569' }}>يوم الغفران (Yom Kippur - إغلاق تام)</span>
-                    <span style={{ fontWeight: 'bold', color: '#DC2626', fontFamily: 'monospace' }}>21-22 سبتمبر 2026</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-          </div>
+          {section === "notes" && <section className="panel full-panel"><div className="panel-head"><div><h3>الملاحظات والتعليقات</h3><p>مساحة تواصل مرتبطة بمتابعة العمل</p></div></div><div className="comment-compose"><textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder="اكتب ملاحظة أو تعليقاً للشريك..." /><button className="gold-button compact" onClick={addComment}>إضافة الملاحظة</button></div><div className="activity-list notes-list">{comments.map((c,i)=><div className="activity" key={i}><div className="activity-icon">✎</div><div><b>{c}</b><small>{i===0?"أضيفت الآن":"ضمن سجل الملاحظات"}</small></div></div>)}</div></section>}
         </div>
-
+        <footer>© 2026 CODELFA PARTNERS <span>مساحة خاصة لإدارة الشراكة</span></footer>
       </main>
 
-      {/* Footer */}
-      <footer style={{ backgroundColor: '#FFFFFF', borderTop: '1px solid #E2E8F0', padding: '20px', textAlign: 'center', fontSize: '11px', color: '#64748B', marginTop: '40px' }}>
-        © 2026 CODELFA ERP System — All Rights Reserved
-      </footer>
-
+      {modal && <div className="modal-backdrop" onClick={()=>setModal(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h3>إضافة حاوية جديدة</h3><p>أدخل البيانات الأساسية ويمكن استكمال التفاصيل لاحقاً.</p></div><button onClick={()=>setModal(false)}>×</button></div><label>رقم الحاوية<input value={newContainer} onChange={e=>setNewContainer(e.target.value)} placeholder="مثال: MSCU1234567"/></label><label>المورد / المصنع<input value={newSupplier} onChange={e=>setNewSupplier(e.target.value)} placeholder="اسم المورد"/></label><label>حالة الشحنة<select value={newStatus} onChange={e=>setNewStatus(e.target.value)}>{statuses.map(s=><option key={s}>{s}</option>)}</select></label><div className="modal-actions"><button className="plain-button" onClick={()=>setModal(false)}>إلغاء</button><button className="gold-button compact" onClick={addShipment}>إضافة الحاوية</button></div></div></div>}
     </div>
   );
+}
+
+function Stat({icon,label,value,note,gold=false}:{icon:string;label:string;value:string;note:string;gold?:boolean}) {
+  return <div className={gold?"stat-card gold-stat":"stat-card"}><div className="stat-top"><span>{label}</span><i>{icon}</i></div><strong>{value}</strong><small>{note}</small></div>;
+}
+function ShipmentTable({rows,detailed=false}:{rows:Shipment[];detailed?:boolean}) {
+  return <div className="table-wrap"><table><thead><tr><th>رقم الحاوية</th><th>المورد</th><th>المسار</th><th>الحالة</th>{detailed&&<><th>التكلفة</th><th>الوصول المتوقع</th></>}</tr></thead><tbody>{rows.map(row=><tr key={row.id}><td><b className="mono">{row.container}</b><small className="row-id">{row.id}</small></td><td>{row.supplier}</td><td>{row.route}</td><td><span className={row.status.includes("الاستلام")?"status done":row.status.includes("التخليص")?"status warning":"status transit"}>{row.status}</span></td>{detailed&&<><td className="mono">{row.cost}</td><td>{row.eta}</td></>}</tr>)}</tbody></table>{rows.length===0&&<div className="empty-row">لا توجد نتائج لهذه الحالة.</div>}</div>;
 }
