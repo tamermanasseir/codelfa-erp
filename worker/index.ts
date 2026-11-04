@@ -4,7 +4,6 @@ interface Env {
   APP_ORIGIN?: string;
   ASSETS: { fetch(request: Request): Promise<Response> };
 }
-
 interface D1Result<T = Record<string, unknown>> {
   results: T[];
   success: boolean;
@@ -18,13 +17,12 @@ interface D1PreparedStatement {
 }
 interface D1Database {
   prepare(query: string): D1PreparedStatement;
+  batch<T = Record<string, unknown>>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>;
 }
-
 type User = { id: string; username: string; display_name: string; role: "owner" | "partner"; is_active: number };
 type SessionUser = User & { token_hash: string };
-
 const SESSION_SECONDS = 60 * 60 * 24 * 14;
-// Cloudflare Workers currently caps PBKDF2 at 100,000 iterations per operation.
+// Cloudflare Workers caps PBKDF2 at 100,000 iterations per operation.
 const PBKDF2_ITERATIONS = 100000;
 
 function json(data: unknown, status = 200, extra: HeadersInit = {}) {
@@ -51,13 +49,13 @@ async function hashPassword(password: string) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: PBKDF2_ITERATIONS }, key, 256);
-  return `pbkdf2$${PBKDF2_ITERATIONS}$${toBase64(salt)}$${toBase64(new Uint8Array(bits))}`;
+  return "pbkdf2$" + PBKDF2_ITERATIONS + "$" + toBase64(salt) + "$" + toBase64(new Uint8Array(bits));
 }
 async function verifyPassword(password: string, stored: string) {
   const [scheme, iterationsRaw, saltRaw, expectedRaw] = stored.split("$");
   if (scheme !== "pbkdf2" || !iterationsRaw || !saltRaw || !expectedRaw) return false;
   const iterations = Number(iterationsRaw);
-  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 1000000) return false;
+  if (!Number.isInteger(iterations) || iterations < 50000 || iterations > 100000) return false;
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: fromBase64(saltRaw), iterations }, key, 256);
   const actual = new Uint8Array(bits);
@@ -73,7 +71,7 @@ function cookieValue(request: Request, name: string) {
   return item ? decodeURIComponent(item.slice(name.length + 1)) : null;
 }
 function sessionCookie(token: string, maxAge: number) {
-  return `codelfa_session=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+  return "codelfa_session=" + encodeURIComponent(token) + "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" + maxAge;
 }
 async function getUser(request: Request, env: Env): Promise<SessionUser | null> {
   const token = cookieValue(request, "codelfa_session");
@@ -84,9 +82,7 @@ async function getUser(request: Request, env: Env): Promise<SessionUser | null> 
   ).bind(tokenHash, Math.floor(Date.now() / 1000)).first<SessionUser>();
   return row || null;
 }
-function ownerOnly(user: SessionUser | null) {
-  return !!user && user.role === "owner";
-}
+function ownerOnly(user: SessionUser | null) { return !!user && user.role === "owner"; }
 async function audit(env: Env, userId: string, action: string, entityType: string, entityId: string, details?: unknown) {
   await env.DB.prepare(
     "INSERT INTO audit_log (id, actor_user_id, action, entity_type, entity_id, details_json) VALUES (?, ?, ?, ?, ?, ?)"
@@ -108,37 +104,31 @@ function validDate(value: unknown) {
   const v = text(value, 30);
   return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
 }
+function minor(value: unknown) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 90000000000000) return null;
+  return Math.round(amount * 100);
+}
+function currency(value: unknown) {
+  const v = text(value, 3);
+  return ["USD", "CNY", "ILS", "TRY"].includes(v) ? v : "";
+}
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message.slice(0, 220) : "Unknown database error";
+}
 async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
+  const path = url.pathname;
+  if (!path.startsWith("/api/")) return env.ASSETS.fetch(request);
   if (!sameOrigin(request, env)) return fail("Origin not allowed", 403);
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "allow": "GET, POST, OPTIONS" } });
-  if (url.pathname === "/api/health" && request.method === "GET") {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "allow": "GET, POST, PATCH, DELETE, OPTIONS" } });
+
+  if (path === "/api/health" && request.method === "GET") {
     const row = await env.DB.prepare("SELECT COUNT(*) AS count FROM users").first<{ count: number }>();
-    let usersSchemaOk = false;
-    let auditSchemaOk = false;
-    try {
-      await env.DB.prepare("SELECT id, username, display_name, password_hash, role, is_active FROM users LIMIT 0").all();
-      usersSchemaOk = true;
-    } catch (error) {
-      console.error("CODELFA health users schema check failed", error);
-    }
-    try {
-      await env.DB.prepare("SELECT id, actor_user_id, action, entity_type, entity_id, details_json FROM audit_log LIMIT 0").all();
-      auditSchemaOk = true;
-    } catch (error) {
-      console.error("CODELFA health audit schema check failed", error);
-    }
-    return json({
-      ok: true,
-      database: "connected",
-      initialized: (row?.count || 0) > 0,
-      setupReady: Boolean(env.BOOTSTRAP_SECRET) && usersSchemaOk,
-      diagnostics: { bootstrapConfigured: Boolean(env.BOOTSTRAP_SECRET), usersSchemaOk, auditSchemaOk }
-    });
+    return json({ ok: true, database: "connected", initialized: (row?.count || 0) > 0 });
   }
 
-  if (url.pathname === "/api/setup" && request.method === "POST") {
+  if (path === "/api/setup" && request.method === "POST") {
     const supplied = request.headers.get("x-setup-key") || "";
     if (!env.BOOTSTRAP_SECRET || supplied.length < 24 || supplied !== env.BOOTSTRAP_SECRET) return fail("Setup authorization failed", 403);
     const count = await env.DB.prepare("SELECT COUNT(*) AS count FROM users").first<{ count: number }>();
@@ -151,35 +141,19 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return fail("Use a 3–40 character username, a display name, and a password of at least 12 characters.");
     }
     const id = randomId();
-    let passwordHash: string;
-    try {
-      passwordHash = await hashPassword(password);
-    } catch (error) {
-      console.error("CODELFA owner setup failed at password hashing", error);
-      return fail("تعذر تجهيز كلمة المرور على الخادم. لم يتم إنشاء الحساب.", 500);
-    }
-    try {
-      await env.DB.prepare("INSERT INTO users (id, username, display_name, password_hash, role) VALUES (?, ?, ?, ?, 'owner')")
-        .bind(id, username, displayName, passwordHash).run();
-    } catch (error) {
-      console.error("CODELFA owner setup failed while inserting user", error);
-      return fail("تعذر حفظ حساب المدير في قاعدة البيانات. لم يتم تأكيد إنشاء الحساب.", 500);
-    }
-    try {
-      await audit(env, id, "initial_owner_created", "user", id);
-    } catch (error) {
-      // Account creation is the critical operation; an audit-only failure must not
-      // make the user retry and create an ambiguous setup state.
-      console.error("CODELFA owner setup audit write failed after account creation", error);
-    }
+    const passwordHash = await hashPassword(password);
+    await env.DB.prepare("INSERT INTO users (id, username, display_name, password_hash, role) VALUES (?, ?, ?, ?, 'owner')")
+      .bind(id, username, displayName, passwordHash).run();
+    try { await audit(env, id, "initial_owner_created", "user", id); }
+    catch (error) { console.error("CODELFA owner audit write failed", error); }
     return json({ ok: true, message: "Owner account created. Sign in to continue." }, 201);
   }
 
-  if (url.pathname === "/api/login" && request.method === "POST") {
+  if (path === "/api/login" && request.method === "POST") {
     const data = await body(request);
     const username = text(data?.username, 40);
     const password = typeof data?.password === "string" ? data.password : "";
-    if (!username || !password) return fail("Enter username and password.", 400);
+    if (!username || !password) return fail("Enter username and password.");
     const user = await env.DB.prepare("SELECT id, username, display_name, password_hash, role, is_active FROM users WHERE username=? COLLATE NOCASE")
       .bind(username).first<User & { password_hash: string }>();
     if (!user || !user.is_active || !(await verifyPassword(password, user.password_hash))) return fail("Incorrect username or password.", 401);
@@ -192,27 +166,30 @@ async function handle(request: Request, env: Env): Promise<Response> {
     return json({ user: { id: user.id, username: user.username, displayName: user.display_name, role: user.role } }, 200, { "set-cookie": sessionCookie(token, SESSION_SECONDS) });
   }
 
-  if (url.pathname === "/api/logout" && request.method === "POST") {
+  if (path === "/api/logout" && request.method === "POST") {
     const token = cookieValue(request, "codelfa_session");
     if (token) await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(await sha256(token)).run();
     return json({ ok: true }, 200, { "set-cookie": sessionCookie("", 0) });
   }
 
   const user = await getUser(request, env);
-  if (url.pathname === "/api/me" && request.method === "GET") {
+  if (path === "/api/me" && request.method === "GET") {
     return user ? json({ user: { id: user.id, username: user.username, displayName: user.display_name, role: user.role } }) : fail("Not signed in", 401);
   }
   if (!user) return fail("Sign in required", 401);
 
-  if (url.pathname === "/api/users" && request.method === "POST") {
-    if (!ownerOnly(user)) return fail("Owner access required.", 403);
+  if (path === "/api/users" && request.method === "GET") {
+    if (!ownerOnly(user)) return fail("Owner access required", 403);
+    const result = await env.DB.prepare("SELECT id, username, display_name, role, is_active, created_at FROM users ORDER BY created_at").all();
+    return json({ users: result.results });
+  }
+  if (path === "/api/users" && request.method === "POST") {
+    if (!ownerOnly(user)) return fail("Owner access required", 403);
     const data = await body(request);
     const username = text(data?.username, 40).toLowerCase();
     const displayName = text(data?.displayName, 100);
     const password = typeof data?.password === "string" ? data.password : "";
-    if (!/^[a-z0-9._-]{3,40}$/.test(username) || displayName.length < 2 || password.length < 12) {
-      return fail("Use a valid username, display name, and password of at least 12 characters.");
-    }
+    if (!/^[a-z0-9._-]{3,40}$/.test(username) || displayName.length < 2 || password.length < 12) return fail("Enter a valid username, display name and password of at least 12 characters.");
     const id = randomId();
     try {
       const passwordHash = await hashPassword(password);
@@ -220,97 +197,273 @@ async function handle(request: Request, env: Env): Promise<Response> {
         .bind(id, username, displayName, passwordHash).run();
       await audit(env, user.id, "create", "partner_user", id, { username });
       return json({ ok: true, id, username }, 201);
-    } catch {
-      return fail("Could not create partner. The username may already exist.", 409);
+    } catch (error) {
+      console.error("CODELFA create partner failed", error);
+      return fail("تعذر إنشاء حساب الشريك. تحقق من اسم المستخدم أو كلمة المرور.", 409);
     }
   }
 
-  if (url.pathname === "/api/shipments" && request.method === "GET") {
+  if (path === "/api/shipments" && request.method === "GET") {
     const result = await env.DB.prepare(
-      "SELECT s.*, c.name AS supplier_name FROM shipments s LEFT JOIN counterparties c ON c.id=s.supplier_id ORDER BY s.created_at DESC"
+      "SELECT s.*, c.name AS supplier_name FROM shipments s LEFT JOIN counterparties c ON c.id=s.supplier_id WHERE s.archived_at IS NULL ORDER BY s.created_at DESC"
     ).all();
     return json({ shipments: result.results });
   }
-  if (url.pathname === "/api/shipments" && request.method === "POST") {
+  if (path === "/api/shipments" && request.method === "POST") {
     if (!ownerOnly(user)) return fail("Partner access is read-only.", 403);
     const data = await body(request);
     const container = text(data?.containerNo, 40).toUpperCase();
     const reference = text(data?.referenceNo, 40) || null;
-    const origin = text(data?.origin, 100) || null;
-    const destination = text(data?.destination, 100) || null;
-    const status = text(data?.status, 30) || "purchased";
     const supplierName = text(data?.supplierName, 120);
+    const status = text(data?.status, 30) || "purchased";
     const allowed = ["purchased","ordered","booked","loaded","departed","in_transit","arrived","customs_clearance","released","received","closed"];
     if (!container && !reference) return fail("Enter a container or reference number.");
     if (!allowed.includes(status)) return fail("Invalid shipment status.");
     let supplierId: string | null = null;
     if (supplierName) {
-      const found = await env.DB.prepare("SELECT id FROM counterparties WHERE name=? AND counterparty_type='supplier'").bind(supplierName).first<{id:string}>();
+      const found = await env.DB.prepare("SELECT id FROM counterparties WHERE name=? AND counterparty_type='supplier' AND archived_at IS NULL").bind(supplierName).first<{id:string}>();
       supplierId = found?.id || randomId();
       if (!found) await env.DB.prepare("INSERT INTO counterparties (id,name,counterparty_type,created_by) VALUES (?,?,'supplier',?)").bind(supplierId,supplierName,user.id).run();
     }
     const id = randomId();
     await env.DB.prepare(
       "INSERT INTO shipments (id, reference_no, container_no, supplier_id, origin, destination, status, purchase_date, etd, eta, bill_of_lading_no, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(id, reference, container || null, supplierId, origin, destination, status, validDate(data?.purchaseDate) || null, validDate(data?.etd) || null, validDate(data?.eta) || null, text(data?.billOfLadingNo, 80) || null, text(data?.notes, 2000) || null, user.id).run();
+    ).bind(id, reference, container || null, supplierId, text(data?.origin,100), text(data?.destination,100), status, validDate(data?.purchaseDate) || null, validDate(data?.etd) || null, validDate(data?.eta) || null, text(data?.billOfLadingNo,80) || null, text(data?.notes,2000) || null, user.id).run();
     await audit(env, user.id, "create", "shipment", id, { containerNo: container, status });
     return json({ ok: true, id }, 201);
   }
 
-  if (url.pathname === "/api/financial-entries" && request.method === "GET") {
-    const result = await env.DB.prepare(
-      "SELECT f.*, c.name AS counterparty_name, s.container_no FROM financial_entries f LEFT JOIN counterparties c ON c.id=f.counterparty_id LEFT JOIN shipments s ON s.id=f.shipment_id ORDER BY f.entry_date DESC, f.created_at DESC"
-    ).all();
-    return json({ entries: result.results });
-  }
-  if (url.pathname === "/api/financial-entries" && request.method === "POST") {
+  const shipmentMatch = path.match(/^\/api\/shipments\/([a-f0-9-]+)$/i);
+  if (shipmentMatch && request.method === "PATCH") {
     if (!ownerOnly(user)) return fail("Partner access is read-only.", 403);
     const data = await body(request);
-    const type = text(data?.entryType, 20);
-    const currency = text(data?.currency, 3);
-    const direction = text(data?.direction, 3);
-    const amount = Number(data?.amount);
-    const entryDate = validDate(data?.entryDate);
-    const allowedTypes = ["purchase","sale","payment","expense","addition","cheque"];
-    if (!allowedTypes.includes(type) || !["USD","CNY","ILS","TRY"].includes(currency) || !["in","out"].includes(direction) || !Number.isFinite(amount) || amount <= 0 || !entryDate) return fail("Check the entry type, amount, currency, direction and date.");
-    const amountMinor = Math.round(amount * 100);
-    const id = randomId();
-    await env.DB.prepare(
-      "INSERT INTO financial_entries (id, entry_type, reference_no, entry_date, due_date, amount_minor, currency, direction, status, description, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(id, type, text(data?.referenceNo, 60) || null, entryDate, validDate(data?.dueDate) || null, amountMinor, currency, direction, text(data?.status, 20) || "recorded", text(data?.description, 200), text(data?.notes, 2000) || null, user.id).run();
-    await audit(env, user.id, "create", "financial_entry", id, { type, amountMinor, currency });
-    return json({ ok: true, id }, 201);
+    const id = shipmentMatch[1];
+    const status = text(data?.status,30);
+    const allowed = ["purchased","ordered","booked","loaded","departed","in_transit","arrived","customs_clearance","released","received","closed"];
+    if (!allowed.includes(status)) return fail("Invalid shipment status.");
+    const result = await env.DB.prepare("UPDATE shipments SET container_no=?,reference_no=?,origin=?,destination=?,status=?,purchase_date=?,etd=?,eta=?,bill_of_lading_no=?,notes=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
+      .bind(text(data?.containerNo,40).toUpperCase() || null,text(data?.referenceNo,40) || null,text(data?.origin,100) || null,text(data?.destination,100) || null,status,validDate(data?.purchaseDate) || null,validDate(data?.etd) || null,validDate(data?.eta) || null,text(data?.billOfLadingNo,80) || null,text(data?.notes,2000) || null,id).run();
+    if (!result.meta.changes) return fail("Shipment not found.",404);
+    await audit(env,user.id,"update","shipment",id,{status});
+    return json({ok:true});
+  }
+  if (shipmentMatch && request.method === "DELETE") {
+    if (!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    await env.DB.prepare("UPDATE shipments SET archived_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL").bind(shipmentMatch[1]).run();
+    await audit(env,user.id,"archive","shipment",shipmentMatch[1]);
+    return json({ok:true});
   }
 
-  if (url.pathname === "/api/comments" && request.method === "GET") {
-    const result = await env.DB.prepare(
-      "SELECT c.id, c.target_type, c.target_id, c.body, c.created_at, u.display_name AS author FROM comments c JOIN users u ON u.id=c.created_by ORDER BY c.created_at DESC LIMIT 200"
-    ).all();
-    return json({ comments: result.results });
+  if (path === "/api/counterparties" && request.method === "GET") {
+    const result = await env.DB.prepare("SELECT id,name,counterparty_type,phone,email,notes,created_at FROM counterparties WHERE archived_at IS NULL ORDER BY name").all();
+    return json({counterparties:result.results});
   }
-  if (url.pathname === "/api/comments" && request.method === "POST") {
-    const data = await body(request);
-    const targetType = text(data?.targetType, 30) || "general";
-    const targetId = text(data?.targetId, 80) || null;
-    const comment = text(data?.body, 3000);
+  if (path === "/api/counterparties" && request.method === "POST") {
+    if (!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const data=await body(request);
+    const name=text(data?.name,160);
+    const type=text(data?.type,20);
+    if (!name || !["supplier","customer","other"].includes(type)) return fail("Enter a name and a valid contact type.");
+    const id=randomId();
+    await env.DB.prepare("INSERT INTO counterparties (id,name,counterparty_type,phone,email,notes,created_by) VALUES (?,?,?,?,?,?,?)")
+      .bind(id,name,type,text(data?.phone,60)||null,text(data?.email,160)||null,text(data?.notes,2000)||null,user.id).run();
+    await audit(env,user.id,"create","counterparty",id,{name,type});
+    return json({ok:true,id},201);
+  }
+
+  if (path === "/api/invoices" && request.method === "GET") {
+    const invoices=await env.DB.prepare("SELECT i.*,c.name AS counterparty_name,s.container_no FROM invoices i LEFT JOIN counterparties c ON c.id=i.counterparty_id LEFT JOIN shipments s ON s.id=i.shipment_id WHERE i.archived_at IS NULL ORDER BY i.invoice_date DESC,i.created_at DESC").all();
+    const lines=await env.DB.prepare("SELECT l.* FROM invoice_lines l JOIN invoices i ON i.id=l.invoice_id WHERE i.archived_at IS NULL ORDER BY l.rowid").all();
+    return json({invoices:invoices.results,lines:lines.results});
+  }
+  if (path === "/api/invoices" && request.method === "POST") {
+    if (!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const data=await body(request);
+    const invoiceNo=text(data?.invoiceNo,80);
+    const type=text(data?.invoiceType,20);
+    const curr=currency(data?.currency);
+    const date=validDate(data?.invoiceDate);
+    const lines=Array.isArray(data?.lines)?data.lines as Record<string,unknown>[]:[];
+    if (!invoiceNo || !["sale","purchase"].includes(type) || !curr || !date || lines.length<1 || lines.length>60) return fail("Complete invoice number, type, date, currency and at least one line.");
+    const prepared: {id:string;description:string;quantity:number;unit:string;price:number;total:number;notes:string|null}[]=[];
+    for (const line of lines) {
+      const description=text(line.description,240);
+      const quantity=Number(line.quantity);
+      const price=minor(line.unitPrice);
+      if (!description || !Number.isFinite(quantity) || quantity<=0 || quantity>100000000 || price===null) return fail("Check every invoice line, quantity and price.");
+      prepared.push({id:randomId(),description,quantity,unit:text(line.unit,30)||"pcs",price,total:Math.round(quantity*price),notes:text(line.notes,500)||null});
+    }
+    const subtotal=prepared.reduce((n,l)=>n+l.total,0);
+    const discount=minor(data?.discount)||0;
+    const tax=minor(data?.tax)||0;
+    const total=subtotal-discount+tax;
+    if (discount>subtotal || total<0) return fail("Discount cannot exceed the invoice subtotal.");
+    const id=randomId();
+    const statements: D1PreparedStatement[]=[
+      env.DB.prepare("INSERT INTO invoices (id,invoice_no,invoice_type,counterparty_id,shipment_id,invoice_date,due_date,currency,subtotal_minor,discount_minor,tax_minor,total_minor,status,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(id,invoiceNo,type,text(data?.counterpartyId,80)||null,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,text(data?.status,20)||"issued",text(data?.notes,3000)||null,user.id)
+    ];
+    for (const line of prepared) statements.push(env.DB.prepare("INSERT INTO invoice_lines (id,invoice_id,description,quantity,unit,unit_price_minor,line_total_minor,notes) VALUES (?,?,?,?,?,?,?,?)").bind(line.id,id,line.description,line.quantity,line.unit,line.price,line.total,line.notes));
+    statements.push(env.DB.prepare("INSERT INTO audit_log (id,actor_user_id,action,entity_type,entity_id,details_json) VALUES (?,?,?,?,?,?)").bind(randomId(),user.id,"create","invoice",id,JSON.stringify({invoiceNo,type,total,currency:curr})));
+    try { await env.DB.batch(statements); }
+    catch(error) { console.error("CODELFA invoice create failed",error); return fail("Could not save invoice. Check that its number is unique.",409); }
+    return json({ok:true,id,totalMinor:total},201);
+  }
+  const invoiceMatch=path.match(/^\/api\/invoices\/([a-f0-9-]+)$/i);
+  if (invoiceMatch && request.method === "PATCH") {
+    if (!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const data=await body(request);
+    const invoiceNo=text(data?.invoiceNo,80),type=text(data?.invoiceType,20),curr=currency(data?.currency),date=validDate(data?.invoiceDate);
+    const lines=Array.isArray(data?.lines)?data.lines as Record<string,unknown>[]:[];
+    const status=text(data?.status,20);
+    if (!invoiceNo || !["sale","purchase"].includes(type) || !curr || !date || lines.length<1 || lines.length>60 || !["draft","issued","partially_paid","paid","cancelled"].includes(status)) return fail("Complete the invoice fields and at least one line.");
+    const prepared:{id:string;description:string;quantity:number;unit:string;price:number;total:number;notes:string|null}[]=[];
+    for(const line of lines){
+      const description=text(line.description,240),quantity=Number(line.quantity),price=minor(line.unitPrice);
+      if(!description || !Number.isFinite(quantity) || quantity<=0 || quantity>100000000 || price===null) return fail("Check every invoice line, quantity and price.");
+      prepared.push({id:randomId(),description,quantity,unit:text(line.unit,30)||"pcs",price,total:Math.round(quantity*price),notes:text(line.notes,500)||null});
+    }
+    const subtotal=prepared.reduce((n,l)=>n+l.total,0),discount=minor(data?.discount)||0,tax=minor(data?.tax)||0,total=subtotal-discount+tax;
+    if(discount>subtotal || total<0) return fail("Discount cannot exceed the invoice subtotal.");
+    const statements:D1PreparedStatement[]=[
+      env.DB.prepare("UPDATE invoices SET invoice_no=?,invoice_type=?,counterparty_id=?,shipment_id=?,invoice_date=?,due_date=?,currency=?,subtotal_minor=?,discount_minor=?,tax_minor=?,total_minor=?,status=?,notes=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
+        .bind(invoiceNo,type,text(data?.counterpartyId,80)||null,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,status,text(data?.notes,3000)||null,invoiceMatch[1]),
+      env.DB.prepare("DELETE FROM invoice_lines WHERE invoice_id=?").bind(invoiceMatch[1])
+    ];
+    for(const line of prepared) statements.push(env.DB.prepare("INSERT INTO invoice_lines (id,invoice_id,description,quantity,unit,unit_price_minor,line_total_minor,notes) VALUES (?,?,?,?,?,?,?,?)").bind(line.id,invoiceMatch[1],line.description,line.quantity,line.unit,line.price,line.total,line.notes));
+    statements.push(env.DB.prepare("INSERT INTO audit_log (id,actor_user_id,action,entity_type,entity_id,details_json) VALUES (?,?,?,?,?,?)").bind(randomId(),user.id,"update","invoice",invoiceMatch[1],JSON.stringify({invoiceNo,total,currency:curr})));
+    try{await env.DB.batch(statements);}catch(error){console.error("CODELFA invoice update failed",error);return fail("Could not update invoice. Check that its number is unique.",409);}
+    return json({ok:true,totalMinor:total});
+  }
+  if (invoiceMatch && request.method === "DELETE") {
+    if (!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    await env.DB.prepare("UPDATE invoices SET archived_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL").bind(invoiceMatch[1]).run();
+    await audit(env,user.id,"archive","invoice",invoiceMatch[1]);
+    return json({ok:true});
+  }
+
+  if (path === "/api/financial-entries" && request.method === "GET") {
+    const result=await env.DB.prepare("SELECT f.*,c.name AS counterparty_name,s.container_no FROM financial_entries f LEFT JOIN counterparties c ON c.id=f.counterparty_id LEFT JOIN shipments s ON s.id=f.shipment_id WHERE f.archived_at IS NULL ORDER BY f.entry_date DESC,f.created_at DESC").all();
+    return json({entries:result.results});
+  }
+  if (path === "/api/financial-entries" && request.method === "POST") {
+    if (!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const data=await body(request);
+    const type=text(data?.entryType,20);
+    const curr=currency(data?.currency);
+    const direction=text(data?.direction,3);
+    const amount=minor(data?.amount);
+    const date=validDate(data?.entryDate);
+    if (!["purchase","sale","payment","expense","addition","cheque"].includes(type) || !curr || !["in","out"].includes(direction) || amount===null || amount<=0 || !date) return fail("Check the entry type, amount, currency, direction and date.");
+    const id=randomId();
+    await env.DB.prepare("INSERT INTO financial_entries (id,entry_type,reference_no,counterparty_id,shipment_id,entry_date,due_date,amount_minor,currency,direction,status,description,notes,created_by,payment_method,cheque_no,bank_name,paid_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(id,type,text(data?.referenceNo,80)||null,text(data?.counterpartyId,80)||null,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,amount,curr,direction,text(data?.status,20)||"recorded",text(data?.description,240)||null,text(data?.notes,3000)||null,user.id,text(data?.paymentMethod,30)||null,text(data?.chequeNo,80)||null,text(data?.bankName,120)||null,validDate(data?.paidAt)||null).run();
+    await audit(env,user.id,"create","financial_entry",id,{type,amount,currency:curr});
+    return json({ok:true,id},201);
+  }
+  const entryMatch=path.match(/^\/api\/financial-entries\/([a-f0-9-]+)$/i);
+  if (entryMatch && request.method === "PATCH") {
+    if (!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const d=await body(request);
+    const amount=minor(d?.amount),curr=currency(d?.currency),date=validDate(d?.entryDate),direction=text(d?.direction,3);
+    const type=text(d?.entryType,20);
+    if (amount===null || amount<=0 || !curr || !date || !["in","out"].includes(direction) || !["purchase","sale","payment","expense","addition","cheque"].includes(type)) return fail("Check the financial entry fields.");
+    await env.DB.prepare("UPDATE financial_entries SET entry_type=?,reference_no=?,counterparty_id=?,shipment_id=?,entry_date=?,due_date=?,amount_minor=?,currency=?,direction=?,status=?,description=?,notes=?,payment_method=?,cheque_no=?,bank_name=?,paid_at=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
+      .bind(type,text(d?.referenceNo,80)||null,text(d?.counterpartyId,80)||null,text(d?.shipmentId,80)||null,date,validDate(d?.dueDate)||null,amount,curr,direction,text(d?.status,20)||"recorded",text(d?.description,240)||null,text(d?.notes,3000)||null,text(d?.paymentMethod,30)||null,text(d?.chequeNo,80)||null,text(d?.bankName,120)||null,validDate(d?.paidAt)||null,entryMatch[1]).run();
+    await audit(env,user.id,"update","financial_entry",entryMatch[1]);
+    return json({ok:true});
+  }
+  if (entryMatch && request.method === "DELETE") {
+    if (!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    await env.DB.prepare("UPDATE financial_entries SET archived_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL").bind(entryMatch[1]).run();
+    await audit(env,user.id,"archive","financial_entry",entryMatch[1]);
+    return json({ok:true});
+  }
+
+  if (path === "/api/shipment-budgets" && request.method === "GET") {
+    const result=await env.DB.prepare("SELECT b.*,s.container_no FROM shipment_budgets b JOIN shipments s ON s.id=b.shipment_id WHERE s.archived_at IS NULL ORDER BY s.container_no").all();
+    return json({budgets:result.results});
+  }
+  if (path === "/api/shipment-budgets" && request.method === "POST") {
+    if (!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const d=await body(request), shipmentId=text(d?.shipmentId,80), type=text(d?.budgetType,20), curr=currency(d?.currency), expected=minor(d?.expected);
+    if (!shipmentId || !["sale","purchase","expense"].includes(type) || !curr || expected===null) return fail("Check the expected value, shipment and currency.");
+    const id=randomId();
+    await env.DB.prepare("INSERT INTO shipment_budgets (id,shipment_id,budget_type,currency,expected_minor,notes,created_by) VALUES (?,?,?,?,?,?,?) ON CONFLICT(shipment_id,budget_type,currency) DO UPDATE SET expected_minor=excluded.expected_minor,notes=excluded.notes,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')")
+      .bind(id,shipmentId,type,curr,expected,text(d?.notes,1000)||null,user.id).run();
+    await audit(env,user.id,"upsert","shipment_budget",shipmentId,{type,currency:curr,expected});
+    return json({ok:true});
+  }
+
+  if (path === "/api/documents" && request.method === "GET") {
+    const targetType=text(url.searchParams.get("targetType"),30),targetId=text(url.searchParams.get("targetId"),80);
+    if (targetType && targetId) {
+      const result=await env.DB.prepare("SELECT id,target_type,target_id,file_name,content_type,byte_size,uploaded_by,created_at FROM documents WHERE target_type=? AND target_id=? ORDER BY created_at DESC").bind(targetType,targetId).all();
+      return json({documents:result.results});
+    }
+    const result=await env.DB.prepare("SELECT id,target_type,target_id,file_name,content_type,byte_size,uploaded_by,created_at FROM documents ORDER BY created_at DESC LIMIT 300").all();
+    return json({documents:result.results});
+  }
+  if (path === "/api/documents" && request.method === "POST") {
+    if (!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const d=await body(request);
+    const targetType=text(d?.targetType,30),targetId=text(d?.targetId,80),name=text(d?.fileName,180),mime=text(d?.contentType,100),data=text(d?.contentBase64,1300000);
+    if (!["shipment","invoice","financial_entry"].includes(targetType) || !targetId || !name || !["application/pdf","image/jpeg","image/png","image/webp"].includes(mime) || !data) return fail("Choose a PDF or image and a valid record.");
+    let bytes:Uint8Array;
+    try { bytes=fromBase64(data); } catch { return fail("Invalid file data."); }
+    if (bytes.length>900000 || bytes.length===0) return fail("Each file must be smaller than 900 KB.");
+    const exists = targetType==="shipment"
+      ? await env.DB.prepare("SELECT id FROM shipments WHERE id=? AND archived_at IS NULL").bind(targetId).first()
+      : targetType==="invoice"
+        ? await env.DB.prepare("SELECT id FROM invoices WHERE id=? AND archived_at IS NULL").bind(targetId).first()
+        : await env.DB.prepare("SELECT id FROM financial_entries WHERE id=? AND archived_at IS NULL").bind(targetId).first();
+    if (!exists) return fail("The linked record was not found.",404);
+    const id=randomId();
+    await env.DB.prepare("INSERT INTO documents (id,target_type,target_id,file_name,content_type,byte_size,content_base64,uploaded_by) VALUES (?,?,?,?,?,?,?,?)")
+      .bind(id,targetType,targetId,name,mime,bytes.length,data,user.id).run();
+    await audit(env,user.id,"upload","document",id,{targetType,targetId,name,size:bytes.length});
+    return json({ok:true,id},201);
+  }
+  const documentMatch=path.match(/^\/api\/documents\/([a-f0-9-]+)$/i);
+  if (documentMatch && request.method === "GET") {
+    const doc=await env.DB.prepare("SELECT file_name,content_type,content_base64 FROM documents WHERE id=?").bind(documentMatch[1]).first<{file_name:string;content_type:string;content_base64:string}>();
+    if (!doc) return fail("Document not found.",404);
+    const safeName=encodeURIComponent(doc.file_name).replace(/'/g,"%27");
+    return new Response(fromBase64(doc.content_base64),{headers:{"content-type":doc.content_type,"content-disposition":"inline; filename*=UTF-8''"+safeName,"cache-control":"private, no-store","x-content-type-options":"nosniff"}});
+  }
+
+  if (path === "/api/comments" && request.method === "GET") {
+    const result=await env.DB.prepare("SELECT c.id,c.target_type,c.target_id,c.body,c.created_at,u.display_name AS author FROM comments c JOIN users u ON u.id=c.created_by ORDER BY c.created_at DESC LIMIT 500").all();
+    return json({comments:result.results});
+  }
+  if (path === "/api/comments" && request.method === "POST") {
+    const d=await body(request),targetType=text(d?.targetType,30)||"general",targetId=text(d?.targetId,80)||null,comment=text(d?.body,3000);
     if (!["shipment","financial_entry","document","general"].includes(targetType) || !comment) return fail("Enter a valid comment.");
-    const id = randomId();
-    await env.DB.prepare("INSERT INTO comments (id,target_type,target_id,body,created_by) VALUES (?,?,?,?,?)")
-      .bind(id, targetType, targetId, comment, user.id).run();
-    await audit(env, user.id, "create", "comment", id, { targetType, targetId });
-    return json({ ok: true, id }, 201);
+    const id=randomId();
+    await env.DB.prepare("INSERT INTO comments (id,target_type,target_id,body,created_by) VALUES (?,?,?,?,?)").bind(id,targetType,targetId,comment,user.id).run();
+    await audit(env,user.id,"create","comment",id,{targetType,targetId});
+    return json({ok:true,id},201);
   }
 
-  return fail("Not found", 404);
+  if (path === "/api/reports" && request.method === "GET") {
+    const [invoices,entries,budgets,shipments]=await Promise.all([
+      env.DB.prepare("SELECT id,invoice_type,shipment_id,currency,total_minor FROM invoices WHERE archived_at IS NULL AND status<>'cancelled'").all(),
+      env.DB.prepare("SELECT id,entry_type,shipment_id,currency,direction,amount_minor FROM financial_entries WHERE archived_at IS NULL AND status<>'cancelled'").all(),
+      env.DB.prepare("SELECT shipment_id,budget_type,currency,expected_minor FROM shipment_budgets").all(),
+      env.DB.prepare("SELECT id,container_no FROM shipments WHERE archived_at IS NULL").all()
+    ]);
+    return json({invoices:invoices.results,entries:entries.results,budgets:budgets.results,shipments:shipments.results});
+  }
+
+  return fail("Not found",404);
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    try {
-      return await handle(request, env);
-    } catch (error) {
-      console.error("CODELFA PARTNERS API error", error);
-      return fail("A server error occurred. No changes were confirmed.", 500);
+    try { return await handle(request,env); }
+    catch (error) {
+      console.error("CODELFA PARTNERS API error",error);
+      return fail("A server error occurred. No changes were confirmed.",500);
     }
   },
 };

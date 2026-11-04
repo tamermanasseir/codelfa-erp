@@ -1,11 +1,22 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CODELFA PARTNERS | Private Business Portal",
-  description: "بوابة CODELFA الخاصة لإدارة ومتابعة الشراكة التجارية.",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "CODELFA" },
+  title: "CODELFA PARTNERS",
+  description: "Private business partnership portal",
   applicationName: "CODELFA PARTNERS",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "CODELFA", statusBarStyle: "black-translucent" },
+  icons: {
+    icon: [{ url: "/codelfa-icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }]
+  }
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#07172c"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

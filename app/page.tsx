@@ -1,194 +1,286 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 
 type Role = "owner" | "partner";
 type User = { id: string; username: string; displayName: string; role: Role };
 type Shipment = {
-  id: string; reference_no: string | null; container_no: string | null; supplier_name: string | null;
-  origin: string | null; destination: string | null; status: string; eta: string | null; created_at: string;
+  id:string; reference_no:string|null; container_no:string|null; supplier_name:string|null;
+  origin:string|null; destination:string|null; status:string; purchase_date:string|null; etd:string|null;
+  eta:string|null; bill_of_lading_no:string|null; notes:string|null; created_at:string;
 };
 type Entry = {
-  id: string; entry_type: string; reference_no: string | null; entry_date: string; amount_minor: number;
-  currency: string; direction: "in" | "out"; status: string; description: string | null;
-  counterparty_name: string | null; container_no: string | null;
+  id:string; entry_type:string; reference_no:string|null; counterparty_id:string|null; shipment_id:string|null;
+  entry_date:string; due_date:string|null; amount_minor:number; currency:string; direction:"in"|"out";
+  status:string; description:string|null; notes:string|null; payment_method:string|null; cheque_no:string|null;
+  bank_name:string|null; paid_at:string|null; counterparty_name:string|null; container_no:string|null;
 };
-type Comment = { id: string; body: string; author: string; created_at: string; target_type: string };
-type Section = "overview" | "shipments" | "finance" | "notes" | "team";
-const shipmentStatuses = [
+type Party = {id:string;name:string;counterparty_type:"supplier"|"customer"|"other";phone:string|null;email:string|null;notes:string|null};
+type Invoice = {
+  id:string;invoice_no:string;invoice_type:"sale"|"purchase";counterparty_id:string|null;shipment_id:string|null;
+  invoice_date:string;due_date:string|null;currency:string;subtotal_minor:number;discount_minor:number;tax_minor:number;
+  total_minor:number;status:string;notes:string|null;counterparty_name:string|null;container_no:string|null;
+};
+type InvoiceLine = {id:string;invoice_id:string;description:string;quantity:number;unit:string;unit_price_minor:number;line_total_minor:number;notes:string|null};
+type Budget = {id:string;shipment_id:string;budget_type:"sale"|"purchase"|"expense";currency:string;expected_minor:number;notes:string|null};
+type DocumentItem = {id:string;target_type:string;target_id:string;file_name:string;content_type:string;byte_size:number;created_at:string};
+type Comment = {id:string;body:string;author:string;created_at:string;target_type:string;target_id:string|null};
+type Section = "overview"|"shipments"|"invoices"|"finance"|"parties"|"statements"|"reports"|"notes"|"team";
+type InvoiceLineForm = {description:string;quantity:string;unit:string;unitPrice:string};
+const currencies=["USD","CNY","ILS","TRY"];
+const shipmentStatuses=[
   ["purchased","تم الشراء"],["ordered","تم تأكيد الطلب"],["booked","تم حجز الشحن البحري"],
   ["loaded","تم التحميل وإصدار بوليصة الشحن"],["departed","غادرت الميناء"],["in_transit","قيد الشحن البحري"],
   ["arrived","وصلت إلى الميناء"],["customs_clearance","قيد التخليص الجمركي"],["released","تم الإفراج عنها"],
-  ["received","تم الاستلام في المستودع"],["closed","مكتملة ومغلقة"],
+  ["received","تم الاستلام في المستودع"],["closed","مكتملة ومغلقة"]
 ];
-const entryTypes = [["purchase","شراء"],["sale","مبيعات"],["payment","دفعة / حوالة"],["expense","تكلفة"],["addition","إضافة"],["cheque","شيك"]];
-const currencies = ["USD","CNY","ILS","TRY"];
-const money = (minor: number, currency: string) => new Intl.NumberFormat("en-US",{style:"currency",currency,maximumFractionDigits:2}).format(minor/100);
-const dateLabel = (v: string) => { try { return new Date(v).toLocaleDateString("en-GB"); } catch { return v; } };
-async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(path,{...options,credentials:"same-origin",headers:{"content-type":"application/json",...(options.headers||{})}});
-  const data = await response.json().catch(()=>({error:"تعذر قراءة استجابة الخادم"}));
-  if (!response.ok) throw new Error(data.error || "حدث خطأ");
+const entryTypes=[["purchase","شراء"],["sale","مبيعات"],["payment","دفعة / حوالة"],["expense","مصروف / تكلفة"],["addition","إضافة"],["cheque","شيك"]];
+const money=(minor:number,currency:string)=>new Intl.NumberFormat("en-US",{style:"currency",currency,maximumFractionDigits:2}).format((minor||0)/100);
+const dateLabel=(value:string|null|undefined)=>value?new Date(value+"T00:00:00").toLocaleDateString("en-GB"):"—";
+async function api<T>(path:string,options:RequestInit={}):Promise<T>{
+  const response=await fetch(path,{...options,credentials:"same-origin",headers:{"content-type":"application/json",...(options.headers||{})}});
+  const data=await response.json().catch(()=>({error:"تعذر قراءة استجابة الخادم"}));
+  if(!response.ok)throw new Error(data.error||"حدث خطأ");
   return data as T;
 }
+const blankShipment=()=>({containerNo:"",referenceNo:"",supplierName:"",origin:"Qingdao",destination:"Ashdod",status:"purchased",purchaseDate:"",etd:"",eta:"",billOfLadingNo:"",notes:""});
+const blankEntry=()=>({entryType:"payment",amount:"",currency:"USD",direction:"out",entryDate:new Date().toISOString().slice(0,10),dueDate:"",description:"",referenceNo:"",status:"recorded",counterpartyId:"",shipmentId:"",paymentMethod:"bank_transfer",chequeNo:"",bankName:"",paidAt:"",notes:""});
+const blankInvoice=()=>({invoiceNo:"",invoiceType:"sale",counterpartyId:"",shipmentId:"",invoiceDate:new Date().toISOString().slice(0,10),dueDate:"",currency:"USD",discount:"0",tax:"0",status:"issued",notes:"",lines:[{description:"",quantity:"1",unit:"pcs",unitPrice:""}] as InvoiceLineForm[]});
 
-export default function Home() {
-  const [user,setUser] = useState<User|null>(null);
-  const [initialized,setInitialized] = useState<boolean|null>(null);
-  const [loading,setLoading] = useState(true);
-  const [section,setSection] = useState<Section>("overview");
-  const [lang,setLang] = useState<"ar"|"en">("ar");
-  const [shipments,setShipments] = useState<Shipment[]>([]);
-  const [entries,setEntries] = useState<Entry[]>([]);
-  const [comments,setComments] = useState<Comment[]>([]);
-  const [error,setError] = useState("");
-  const [notice,setNotice] = useState("");
-  const [showShipment,setShowShipment] = useState(false);
-  const [showEntry,setShowEntry] = useState(false);
-  const [showPartner,setShowPartner] = useState(false);
-  const [loginName,setLoginName] = useState("");
-  const [loginPassword,setLoginPassword] = useState("");
-  const [setupKey,setSetupKey] = useState("");
-  const [ownerName,setOwnerName] = useState("");
-  const [ownerDisplay,setOwnerDisplay] = useState("");
-  const [ownerPassword,setOwnerPassword] = useState("");
-  const [partnerName,setPartnerName] = useState("abukhalil");
-  const [partnerDisplay,setPartnerDisplay] = useState("د. أبو خليل");
-  const [partnerPassword,setPartnerPassword] = useState("");
-  const [commentText,setCommentText] = useState("");
-  const [shipmentForm,setShipmentForm] = useState({containerNo:"",referenceNo:"",supplierName:"",origin:"Qingdao",destination:"Ashdod",status:"purchased",eta:"",billOfLadingNo:"",notes:""});
-  const [entryForm,setEntryForm] = useState({entryType:"purchase",amount:"",currency:"USD",direction:"out",entryDate:new Date().toISOString().slice(0,10),description:"",referenceNo:"",status:"recorded"});
+export default function Home(){
+  const [user,setUser]=useState<User|null>(null);
+  const [initialized,setInitialized]=useState<boolean|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [section,setSection]=useState<Section>("overview");
+  const [lang,setLang]=useState<"ar"|"en">("ar");
+  const [shipments,setShipments]=useState<Shipment[]>([]);
+  const [entries,setEntries]=useState<Entry[]>([]);
+  const [invoices,setInvoices]=useState<Invoice[]>([]);
+  const [invoiceLines,setInvoiceLines]=useState<InvoiceLine[]>([]);
+  const [parties,setParties]=useState<Party[]>([]);
+  const [budgets,setBudgets]=useState<Budget[]>([]);
+  const [documents,setDocuments]=useState<DocumentItem[]>([]);
+  const [comments,setComments]=useState<Comment[]>([]);
+  const [error,setError]=useState("");
+  const [notice,setNotice]=useState("");
+  const [modal,setModal]=useState<"shipment"|"invoice"|"entry"|"party"|"budget"|"partner"|null>(null);
+  const [editingId,setEditingId]=useState<string|null>(null);
+  const [shipmentForm,setShipmentForm]=useState(blankShipment());
+  const [entryForm,setEntryForm]=useState(blankEntry());
+  const [invoiceForm,setInvoiceForm]=useState(blankInvoice());
+  const [partyForm,setPartyForm]=useState({name:"",type:"supplier",phone:"",email:"",notes:""});
+  const [budgetForm,setBudgetForm]=useState({shipmentId:"",budgetType:"sale",currency:"USD",expected:"",notes:""});
+  const [partnerForm,setPartnerForm]=useState({username:"abukhalil",displayName:"د. أبو خليل",password:""});
+  const [loginName,setLoginName]=useState("");
+  const [loginPassword,setLoginPassword]=useState("");
+  const [setupKey,setSetupKey]=useState("");
+  const [ownerName,setOwnerName]=useState("tamer");
+  const [ownerDisplay,setOwnerDisplay]=useState("Tamer");
+  const [ownerPassword,setOwnerPassword]=useState("");
+  const [commentText,setCommentText]=useState("");
+  const [commentTarget,setCommentTarget]=useState("general");
+  const [statementParty,setStatementParty]=useState("");
+  const [uploadTarget,setUploadTarget]=useState<{type:"shipment"|"invoice"|"financial_entry";id:string}|null>(null);
+  const [uploading,setUploading]=useState(false);
 
-  const isAr = lang === "ar";
-  const isOwner = user?.role === "owner";
-  const labels = isAr
-    ? {home:"الرئيسية",shipments:"الشحنات والحاويات",finance:"الحسابات والعمليات",notes:"الملاحظات",team:"إدارة الشريك",hello:"مساحة الشراكة",signout:"تسجيل الخروج",add:"إضافة",refresh:"تحديث",empty:"لا توجد بيانات مسجلة بعد",readOnly:"صلاحية مشاهدة وتعليق فقط"}
-    : {home:"Overview",shipments:"Shipments",finance:"Financial entries",notes:"Comments",team:"Partner access",hello:"Partnership workspace",signout:"Sign out",add:"Add",refresh:"Refresh",empty:"No records have been added yet",readOnly:"View and comment only"};
-  const nav: {id:Section;label:string;icon:string}[] = [
+  const isOwner=user?.role==="owner";
+  const isAr=lang==="ar";
+  const labels=isAr
+    ? {home:"الرئيسية",shipments:"الشحنات والحاويات",invoices:"المشتريات والمبيعات والفواتير",finance:"المدفوعات والشيكات",parties:"الموردون والعملاء",statements:"كشوف الحسابات",reports:"الأرباح والتقارير",notes:"الملاحظات والتعليقات",team:"حساب الشريك",refresh:"تحديث",empty:"لا توجد بيانات مسجلة بعد",add:"إضافة",readOnly:"مشاهدة وتعليق فقط"}
+    : {home:"Overview",shipments:"Shipments & Containers",invoices:"Purchases, Sales & Invoices",finance:"Payments & Cheques",parties:"Suppliers & Customers",statements:"Statements",reports:"Profit & Reports",notes:"Notes & Comments",team:"Partner account",refresh:"Refresh",empty:"No records yet",add:"Add",readOnly:"View and comment only"};
+  const sections: {id:Section;label:string;icon:string}[]=[
     {id:"overview",label:labels.home,icon:"⌂"},{id:"shipments",label:labels.shipments,icon:"▤"},
-    {id:"finance",label:labels.finance,icon:"⇄"},{id:"notes",label:labels.notes,icon:"✎"},
-    ...(isOwner?[{id:"team" as Section,label:labels.team,icon:"♙"}]:[]),
+    {id:"invoices",label:labels.invoices,icon:"▧"},{id:"finance",label:labels.finance,icon:"⇄"},
+    {id:"parties",label:labels.parties,icon:"♙"},{id:"statements",label:labels.statements,icon:"≡"},
+    {id:"reports",label:labels.reports,icon:"▥"},{id:"notes",label:labels.notes,icon:"✎"},
+    ...(isOwner?[{id:"team" as Section,label:labels.team,icon:"♧"}]:[])
   ];
-  const title = nav.find(x=>x.id===section)?.label || labels.home;
+  const title=sections.find(s=>s.id===section)?.label||labels.home;
 
-  const loadData = useCallback(async () => {
-    if (!user) return;
+  const loadData=useCallback(async()=>{
+    if(!user)return;
     setError("");
-    try {
-      const [s,f,c] = await Promise.all([
+    try{
+      const [s,e,i,p,b,d,c]=await Promise.all([
         api<{shipments:Shipment[]}>("/api/shipments"),
         api<{entries:Entry[]}>("/api/financial-entries"),
-        api<{comments:Comment[]}>("/api/comments"),
+        api<{invoices:Invoice[];lines:InvoiceLine[]}>("/api/invoices"),
+        api<{counterparties:Party[]}>("/api/counterparties"),
+        api<{budgets:Budget[]}>("/api/shipment-budgets"),
+        api<{documents:DocumentItem[]}>("/api/documents"),
+        api<{comments:Comment[]}>("/api/comments")
       ]);
-      setShipments(s.shipments); setEntries(f.entries); setComments(c.comments);
-    } catch(e) { setError(e instanceof Error?e.message:"تعذر تحميل البيانات"); }
+      setShipments(s.shipments);setEntries(e.entries);setInvoices(i.invoices);setInvoiceLines(i.lines);
+      setParties(p.counterparties);setBudgets(b.budgets);setDocuments(d.documents);setComments(c.comments);
+    }catch(err){setError(err instanceof Error?err.message:"تعذر تحميل بيانات الشراكة");}
   },[user]);
 
-  useEffect(() => {
-    let active = true;
+  useEffect(()=>{
+    let active=true;
     Promise.all([api<{user:User}>("/api/me"),api<{initialized:boolean}>("/api/health")])
       .then(([session,health])=>{if(active){setUser(session.user);setInitialized(health.initialized);}})
-      .catch(async()=>{try{const health=await api<{initialized:boolean}>("/api/health");if(active)setInitialized(health.initialized);}catch{if(active)setError("تعذر الاتصال بالخادم وقاعدة البيانات.");}})
+      .catch(async()=>{try{const h=await api<{initialized:boolean}>("/api/health");if(active)setInitialized(h.initialized);}catch{if(active)setError("تعذر الاتصال بالخادم.");}})
       .finally(()=>{if(active)setLoading(false);});
-    return ()=>{active=false;};
+    return()=>{active=false;};
   },[]);
-  useEffect(()=>{if(user) void loadData();},[user,loadData]);
+  useEffect(()=>{if(user)void loadData();},[user,loadData]);
 
-  async function signIn(e:FormEvent) {
+  async function signIn(e:FormEvent){e.preventDefault();setError("");try{const r=await api<{user:User}>("/api/login",{method:"POST",body:JSON.stringify({username:loginName,password:loginPassword})});setUser(r.user);setLoginPassword("");}catch(err){setError(err instanceof Error?err.message:"تعذر تسجيل الدخول");}}
+  async function setup(e:FormEvent){e.preventDefault();setError("");try{await api("/api/setup",{method:"POST",headers:{"x-setup-key":setupKey},body:JSON.stringify({username:ownerName,displayName:ownerDisplay,password:ownerPassword})});setInitialized(true);setNotice("تم إنشاء حساب المدير. سجّل الدخول الآن.");setSetupKey("");setOwnerPassword("");}catch(err){setError(err instanceof Error?err.message:"تعذر إنشاء الحساب");}}
+  async function signOut(){await api("/api/logout",{method:"POST"}).catch(()=>undefined);setUser(null);setSection("overview");}
+  function startShipmentEdit(s:Shipment){
+    setEditingId(s.id);
+    setShipmentForm({containerNo:s.container_no||"",referenceNo:s.reference_no||"",supplierName:s.supplier_name||"",origin:s.origin||"",destination:s.destination||"",status:s.status,purchaseDate:s.purchase_date||"",etd:s.etd||"",eta:s.eta||"",billOfLadingNo:s.bill_of_lading_no||"",notes:s.notes||""});
+    setModal("shipment");
+  }
+  async function saveShipment(e:FormEvent){
     e.preventDefault();setError("");
-    try { const result=await api<{user:User}>("/api/login",{method:"POST",body:JSON.stringify({username:loginName,password:loginPassword})});setUser(result.user);setLoginPassword(""); }
-    catch(e){setError(e instanceof Error?e.message:"تعذر تسجيل الدخول");}
+    try{
+      await api(editingId?"/api/shipments/"+editingId:"/api/shipments",{method:editingId?"PATCH":"POST",body:JSON.stringify(shipmentForm)});
+      setModal(null);setEditingId(null);await loadData();setNotice("تم حفظ بيانات الشحنة.");
+    }catch(err){setError(err instanceof Error?err.message:"تعذر حفظ الشحنة");}
   }
-  async function setup(e:FormEvent) {
+  async function archive(path:string,label:string){
+    if(!window.confirm("سيتم إخفاء السجل من القوائم مع الاحتفاظ به في سجل التدقيق. هل تتابع؟"))return;
+    try{await api(path,{method:"DELETE"});await loadData();setNotice("تمت أرشفة "+label+".");}
+    catch(err){setError(err instanceof Error?err.message:"تعذر تنفيذ العملية");}
+  }
+  async function saveEntry(e:FormEvent){
     e.preventDefault();setError("");
-    try { await api("/api/setup",{method:"POST",headers:{"x-setup-key":setupKey},body:JSON.stringify({username:ownerName,displayName:ownerDisplay,password:ownerPassword})});setInitialized(true);setNotice("تم إنشاء حساب المدير. سجّل الدخول الآن.");setSetupKey(""); }
-    catch(e){setError(e instanceof Error?e.message:"تعذر إنشاء الحساب");}
+    try{
+      await api(editingId?"/api/financial-entries/"+editingId:"/api/financial-entries",{method:editingId?"PATCH":"POST",body:JSON.stringify({...entryForm,amount:Number(entryForm.amount)})});
+      setModal(null);setEditingId(null);await loadData();setNotice("تم حفظ الحركة المالية.");
+    }catch(err){setError(err instanceof Error?err.message:"تعذر حفظ الحركة");}
   }
-  async function signOut() {
-    await api("/api/logout",{method:"POST"}).catch(()=>undefined);setUser(null);setShipments([]);setEntries([]);setComments([]);setSection("overview");
+  function startEntryEdit(x:Entry){
+    setEditingId(x.id);
+    setEntryForm({entryType:x.entry_type,amount:String(x.amount_minor/100),currency:x.currency,direction:x.direction,entryDate:x.entry_date,dueDate:x.due_date||"",description:x.description||"",referenceNo:x.reference_no||"",status:x.status,counterpartyId:x.counterparty_id||"",shipmentId:x.shipment_id||"",paymentMethod:x.payment_method||"",chequeNo:x.cheque_no||"",bankName:x.bank_name||"",paidAt:x.paid_at||"",notes:x.notes||""});
+    setModal("entry");
   }
-  async function createShipment(e:FormEvent) {
+  function startInvoiceEdit(i:Invoice){
+    const lines=invoiceLines.filter(l=>l.invoice_id===i.id);
+    setEditingId(i.id);
+    setInvoiceForm({
+      invoiceNo:i.invoice_no,invoiceType:i.invoice_type,counterpartyId:i.counterparty_id||"",shipmentId:i.shipment_id||"",
+      invoiceDate:i.invoice_date,dueDate:i.due_date||"",currency:i.currency,discount:String(i.discount_minor/100),
+      tax:String(i.tax_minor/100),status:i.status,notes:i.notes||"",
+      lines:lines.length?lines.map(l=>({description:l.description,quantity:String(l.quantity),unit:l.unit,unitPrice:String(l.unit_price_minor/100)})):[{description:"",quantity:"1",unit:"pcs",unitPrice:""}]
+    });
+    setModal("invoice");
+  }
+  async function saveInvoice(e:FormEvent){
     e.preventDefault();setError("");
-    try {await api("/api/shipments",{method:"POST",body:JSON.stringify(shipmentForm)});setShowShipment(false);setShipmentForm({containerNo:"",referenceNo:"",supplierName:"",origin:"Qingdao",destination:"Ashdod",status:"purchased",eta:"",billOfLadingNo:"",notes:""});await loadData();setNotice("تم حفظ الحاوية في قاعدة البيانات المشتركة.");}
-    catch(e){setError(e instanceof Error?e.message:"تعذر حفظ الحاوية");}
+    try{
+      const payload={...invoiceForm,discount:Number(invoiceForm.discount||0),tax:Number(invoiceForm.tax||0),lines:invoiceForm.lines.map(l=>({...l,quantity:Number(l.quantity),unitPrice:Number(l.unitPrice)}))};
+      await api(editingId?"/api/invoices/"+editingId:"/api/invoices",{method:editingId?"PATCH":"POST",body:JSON.stringify(payload)});
+      setModal(null);setEditingId(null);setInvoiceForm(blankInvoice());await loadData();setNotice("تم حفظ الفاتورة وتفاصيل بنودها.");
+    }catch(err){setError(err instanceof Error?err.message:"تعذر حفظ الفاتورة");}
   }
-  async function createEntry(e:FormEvent) {
+  async function saveParty(e:FormEvent){
     e.preventDefault();setError("");
-    try {await api("/api/financial-entries",{method:"POST",body:JSON.stringify({...entryForm,amount:Number(entryForm.amount)})});setShowEntry(false);setEntryForm({...entryForm,amount:"",description:"",referenceNo:""});await loadData();setNotice("تم حفظ العملية المالية.");}
-    catch(e){setError(e instanceof Error?e.message:"تعذر حفظ العملية");}
+    try{await api("/api/counterparties",{method:"POST",body:JSON.stringify(partyForm)});setModal(null);setPartyForm({name:"",type:"supplier",phone:"",email:"",notes:""});await loadData();setNotice("تمت إضافة جهة التعامل.");}
+    catch(err){setError(err instanceof Error?err.message:"تعذر حفظ جهة التعامل");}
   }
-  async function createComment(e:FormEvent) {
+  async function saveBudget(e:FormEvent){
+    e.preventDefault();setError("");
+    try{await api("/api/shipment-budgets",{method:"POST",body:JSON.stringify({...budgetForm,expected:Number(budgetForm.expected)})});setModal(null);await loadData();setNotice("تم حفظ القيمة التقديرية للشحنة.");}
+    catch(err){setError(err instanceof Error?err.message:"تعذر حفظ التقدير");}
+  }
+  async function savePartner(e:FormEvent){
+    e.preventDefault();setError("");
+    try{await api("/api/users",{method:"POST",body:JSON.stringify(partnerForm)});setModal(null);setPartnerForm({...partnerForm,password:""});setNotice("تم إنشاء حساب الشريك. أرسل بيانات الدخول له بطريقة آمنة.");}
+    catch(err){setError(err instanceof Error?err.message:"تعذر إنشاء حساب الشريك");}
+  }
+  async function addComment(e:FormEvent){
     e.preventDefault();if(!commentText.trim())return;
-    try {await api("/api/comments",{method:"POST",body:JSON.stringify({targetType:"general",body:commentText})});setCommentText("");await loadData();}
-    catch(e){setError(e instanceof Error?e.message:"تعذر إضافة التعليق");}
+    try{await api("/api/comments",{method:"POST",body:JSON.stringify({targetType:commentTarget,body:commentText})});setCommentText("");await loadData();setNotice("تمت إضافة الملاحظة.");}
+    catch(err){setError(err instanceof Error?err.message:"تعذر إضافة الملاحظة");}
   }
-  async function createPartner(e:FormEvent) {
-    e.preventDefault();setError("");
-    try {await api("/api/users",{method:"POST",body:JSON.stringify({username:partnerName,displayName:partnerDisplay,password:partnerPassword})});setShowPartner(false);setPartnerPassword("");setNotice("تم إنشاء حساب الشريك. أرسل له اسم المستخدم وكلمة المرور بطريقة آمنة.");}
-    catch(e){setError(e instanceof Error?e.message:"تعذر إنشاء حساب الشريك");}
+  async function uploadFile(file:File){
+    if(!uploadTarget)return;
+    if(file.size>900000){setError("حجم الملف يجب أن يكون أقل من 900 كيلوبايت.");return;}
+    setUploading(true);setError("");
+    try{
+      const bytes=new Uint8Array(await file.arrayBuffer());let binary="";
+      for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+      await api("/api/documents",{method:"POST",body:JSON.stringify({targetType:uploadTarget.type,targetId:uploadTarget.id,fileName:file.name,contentType:file.type,contentBase64:btoa(binary)})});
+      await loadData();setUploadTarget(null);setNotice("تم رفع المرفق وربطه بالسجل.");
+    }catch(err){setError(err instanceof Error?err.message:"تعذر رفع الملف");}
+    finally{setUploading(false);}
   }
 
-  const totals = useMemo(()=>{
-    const sum=(direction:"in"|"out")=>entries.filter(x=>x.direction===direction&&x.status!=="cancelled").reduce((a,x)=>a+x.amount_minor,0);
-    return {in:sum("in"),out:sum("out"),count:entries.length};
-  },[entries]);
-  const grouped = useMemo(()=>currencies.map(currency=>({currency,in:entries.filter(x=>x.currency===currency&&x.direction==="in"&&x.status!=="cancelled").reduce((a,x)=>a+x.amount_minor,0),out:entries.filter(x=>x.currency===currency&&x.direction==="out"&&x.status!=="cancelled").reduce((a,x)=>a+x.amount_minor,0)})).filter(x=>x.in||x.out),[entries]);
+  const totals=useMemo(()=>currencies.map(c=>{
+    const inc=entries.filter(x=>x.currency===c&&x.direction==="in"&&x.status!=="cancelled").reduce((a,x)=>a+x.amount_minor,0);
+    const out=entries.filter(x=>x.currency===c&&x.direction==="out"&&x.status!=="cancelled").reduce((a,x)=>a+x.amount_minor,0);
+    const sales=invoices.filter(x=>x.currency===c&&x.invoice_type==="sale").reduce((a,x)=>a+x.total_minor,0);
+    const purchases=invoices.filter(x=>x.currency===c&&x.invoice_type==="purchase").reduce((a,x)=>a+x.total_minor,0);
+    const costs=entries.filter(x=>x.currency===c&&x.entry_type==="expense").reduce((a,x)=>a+x.amount_minor,0);
+    return {currency:c,inc,out,sales,purchases,costs,profit:sales-purchases-costs};
+  }).filter(x=>x.inc||x.out||x.sales||x.purchases||x.costs),[entries,invoices]);
+  const activeStatements=useMemo(()=>parties.filter(p=>!statementParty||p.id===statementParty),[parties,statementParty]);
+  const statementRows=useMemo(()=>{
+    if(!statementParty)return [];
+    const inv=invoices.filter(x=>x.counterparty_id===statementParty).map(x=>({id:x.id,date:x.invoice_date,label:(x.invoice_type==="sale"?"فاتورة مبيعات ":"فاتورة مشتريات ")+x.invoice_no,currency:x.currency,debit:x.invoice_type==="sale"?x.total_minor:0,credit:x.invoice_type==="purchase"?x.total_minor:0}));
+    const ent=entries.filter(x=>x.counterparty_id===statementParty).map(x=>({id:x.id,date:x.entry_date,label:x.description||x.entry_type,currency:x.currency,debit:x.direction==="out"?x.amount_minor:0,credit:x.direction==="in"?x.amount_minor:0}));
+    return [...inv,...ent].sort((a,b)=>a.date.localeCompare(b.date));
+  },[invoices,entries,statementParty]);
 
-  if(loading) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark">C<span>✦</span></div><h2>CODELFA PARTNERS</h2><p>جارٍ الاتصال بمساحة الشراكة…</p></div></div>;
-  if(!user) return <div className="auth-screen"><div className="auth-card"><div className="auth-brand"><div className="brand-mark">C<span>✦</span></div><div><b>CODELFA PARTNERS</b><small>PRIVATE BUSINESS PORTAL</small></div></div>
-    <h1>{initialized===false?"إعداد مساحة الشراكة":"مرحباً بعودتك"}</h1><p>{initialized===false?"أنشئ حساب المدير الأول. هذه الخطوة متاحة مرة واحدة فقط.":"سجّل الدخول للوصول إلى بيانات العمل المشتركة."}</p>
-    {error&&<div className="error-banner">{error}</div>}
-    {initialized===false?<form onSubmit={setup} className="auth-form"><label>مفتاح الإعداد المؤقت<input required type="password" value={setupKey} onChange={e=>setSetupKey(e.target.value)} /></label><label>اسم المستخدم<input required minLength={3} value={ownerName} onChange={e=>setOwnerName(e.target.value)} placeholder="tamer" /></label><label>الاسم الظاهر<input required value={ownerDisplay} onChange={e=>setOwnerDisplay(e.target.value)} placeholder="المدير" /></label><label>كلمة المرور (12 حرفاً على الأقل)<input required minLength={12} type="password" value={ownerPassword} onChange={e=>setOwnerPassword(e.target.value)} /></label><button className="gold-button auth-submit">إنشاء حساب المدير</button></form>
-    :<form onSubmit={signIn} className="auth-form"><label>اسم المستخدم<input autoComplete="username" required value={loginName} onChange={e=>setLoginName(e.target.value)} /></label><label>كلمة المرور<input autoComplete="current-password" required type="password" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} /></label><button className="gold-button auth-submit">تسجيل الدخول</button></form>}
+  const pageHeader=(eyebrow:string,heading:string,description:string,action?:ReactNode)=><div className="page-heading"><div><span className="eyebrow">{eyebrow}</span><h1>{heading}</h1><p>{description}</p></div>{action}</div>;
+  const docsFor=(type:string,id:string)=>documents.filter(d=>d.target_type===type&&d.target_id===id);
+
+  if(loading)return <div className="auth-screen"><div className="auth-card"><div className="brand-mark">C✦</div><h2>CODELFA PARTNERS</h2><p>جارٍ الاتصال بمساحة الشراكة…</p></div></div>;
+  if(!user)return <div className="auth-screen"><div className="auth-card"><div className="auth-brand"><div className="brand-mark">C✦</div><div><b>CODELFA PARTNERS</b><small>PRIVATE BUSINESS PORTAL</small></div></div><h1>{initialized===false?"إعداد مساحة الشراكة":"مرحباً بعودتك"}</h1><p>{initialized===false?"أنشئ حساب المدير الأول. هذه الخطوة متاحة مرة واحدة فقط.":"سجّل الدخول للوصول إلى بيانات العمل المشتركة."}</p>{error&&<div className="error-banner">{error}</div>}
+    {initialized===false?<form onSubmit={setup} className="auth-form"><label>مفتاح الإعداد المؤقت<input required type="password" value={setupKey} onChange={e=>setSetupKey(e.target.value)}/></label><label>اسم المستخدم<input required minLength={3} value={ownerName} onChange={e=>setOwnerName(e.target.value)}/></label><label>الاسم الظاهر<input required value={ownerDisplay} onChange={e=>setOwnerDisplay(e.target.value)}/></label><label>كلمة المرور (12 حرفاً على الأقل)<input required minLength={12} type="password" value={ownerPassword} onChange={e=>setOwnerPassword(e.target.value)}/></label><button className="gold-button auth-submit">إنشاء حساب المدير</button></form>
+    :<form onSubmit={signIn} className="auth-form"><label>اسم المستخدم<input autoComplete="username" required value={loginName} onChange={e=>setLoginName(e.target.value)}/></label><label>كلمة المرور<input autoComplete="current-password" required type="password" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)}/></label><button className="gold-button auth-submit">تسجيل الدخول</button></form>}
     <div className="auth-foot">مساحة خاصة للمستخدمين المصرح لهم فقط</div></div></div>;
 
   return <div className={isAr?"app-shell":"app-shell ltr"} dir={isAr?"rtl":"ltr"}>
-    <aside className="sidebar"><div className="brand"><div className="brand-mark">C<span>✦</span></div><div><div className="brand-name">CODELFA <b>PARTNERS</b></div><div className="brand-sub">PRIVATE BUSINESS PORTAL</div></div></div>
-      <div className="workspace"><span className="workspace-dot"/> مساحة الشراكة<small>حساب مشترك وآمن</small></div><div className="nav-caption">إدارة الأعمال</div>
-      <nav>{nav.map(item=><button key={item.id} className={section===item.id?"nav-item active":"nav-item"} onClick={()=>setSection(item.id)}><span className="nav-icon">{item.icon}</span><span>{item.label}</span>{section===item.id&&<i/>}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="secure"><span>⌑</span><div><b>مساحة خاصة وآمنة</b><small>صلاحيات حسب نوع الحساب</small></div></div><div className="version">CODELFA PARTNERS · 1.0</div></div>
-    </aside>
-    <main className="main-area"><header className="topbar"><div className="mobile-brand"><div className="brand-mark small">C<span>✦</span></div><b>CODELFA PARTNERS</b></div><div className="crumb">{labels.hello}<span>/</span><b>{title}</b></div>
-      <div className="top-actions"><select className="lang-select" value={lang} onChange={e=>setLang(e.target.value as "ar"|"en")}><option value="ar">العربية</option><option value="en">English</option></select><div className="user-chip"><div className="avatar">{user.displayName.slice(0,1)}</div><div><b>{user.displayName}</b><small>{isOwner?"مدير النظام":labels.readOnly}</small></div><button className="chevron" onClick={signOut} title={labels.signout}>↪</button></div></div>
-    </header>
-    <div className="content"><div className="welcome-row"><div><div className="eyebrow">PRIVATE PARTNERSHIP WORKSPACE</div><h1>{section==="overview"?"أهلاً، "+user.displayName:title}</h1><p>متابعة الشحنات والحسابات والعمليات الفعلية المسجلة.</p></div><div className="date-pill">{new Date().toLocaleDateString(isAr?"ar":"en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div></div>
-      {notice&&<div className="preview-notice"><span>✓</span>{notice}<button onClick={()=>setNotice("")}>×</button></div>}
-      {error&&<div className="error-banner">{error}<button onClick={()=>setError("")}>×</button></div>}
-      {section==="overview"&&<><div className="hero-card"><div className="hero-copy"><div className="hero-kicker">CODELFA · BUSINESS PARTNERSHIP</div><h2>كل تفاصيل العمل،<br/><em>في مكان واحد.</em></h2><p>بيانات مشتركة، صلاحيات واضحة، ومتابعة منظمة من الشراء حتى التسليم.</p><button onClick={()=>setSection("shipments")} className="gold-button">استعراض الشحنات <span>←</span></button></div><div className="hero-art"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="hero-cube">C<span>✦</span></div><div className="hero-label">TRUST · CLARITY · PARTNERSHIP</div></div></div>
-        <div className="section-heading"><div><h2>ملخص الحسابات</h2><p>القيم معروضة حسب كل عملة دون خلط أسعار الصرف</p></div><button className="text-link" onClick={()=>void loadData()}>{labels.refresh} ↻</button></div>
-        <div className="stats-grid"><Stat label="عدد الحاويات" value={String(shipments.length)} note="الشحنات المسجلة فعلياً"/><Stat label="العمليات المالية" value={String(totals.count)} note="عدد القيود المسجلة"/><Stat label="إجمالي المقبوضات" value={String(grouped.length)} note="عملات لها حركة مالية"/><Stat label="إجمالي المدفوعات" value={String(entries.filter(x=>x.direction==="out").length)} note="قيود دفع مسجلة" gold/></div>
-        <div className="two-col"><section className="panel"><div className="panel-head"><div><h3>آخر الشحنات</h3><p>حالة الحاويات المسجلة</p></div><button className="text-link" onClick={()=>setSection("shipments")}>عرض الكل ←</button></div><ShipmentTable rows={shipments.slice(0,5)}/>{shipments.length===0&&<Empty text={labels.empty}/>}</section>
-        <section className="panel"><div className="panel-head"><div><h3>الحركة حسب العملة</h3><p>مقبوضات ومدفوعات دون تحويل تلقائي</p></div></div>{grouped.length?grouped.map(g=><div className="currency-row" key={g.currency}><b>{g.currency}</b><span>داخل: {money(g.in,g.currency)}</span><span>خارج: {money(g.out,g.currency)}</span></div>):<Empty text={labels.empty}/>}</section></div></>}
-      {section==="shipments"&&<section className="panel full-panel"><div className="panel-head"><div><h3>الشحنات والحاويات</h3><p>مراحل الشحن من الشراء حتى الاستلام</p></div>{isOwner&&<button className="gold-button compact" onClick={()=>setShowShipment(true)}>＋ إضافة حاوية</button>}</div><ShipmentTable rows={shipments} detailed/>{shipments.length===0&&<Empty text={labels.empty}/>}</section>}
-      {section==="finance"&&<section className="panel full-panel"><div className="panel-head"><div><h3>الحسابات والعمليات المالية</h3><p>المشتريات والمبيعات والدفعات والتكاليف والإضافات والشيكات</p></div>{isOwner&&<button className="gold-button compact" onClick={()=>setShowEntry(true)}>＋ تسجيل عملية</button>}</div><div className="table-wrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th>المرجع</th><th>الاتجاه</th><th>القيمة</th><th>الحالة</th></tr></thead><tbody>{entries.map(x=><tr key={x.id}><td>{dateLabel(x.entry_date)}</td><td>{entryTypes.find(t=>t[0]===x.entry_type)?.[1]||x.entry_type}</td><td>{x.description||"—"}</td><td className="mono">{x.reference_no||"—"}</td><td>{x.direction==="in"?"داخل":"خارج"}</td><td className="mono">{money(x.amount_minor,x.currency)}</td><td>{x.status}</td></tr>)}</tbody></table></div>{entries.length===0&&<Empty text={labels.empty}/>}</section>}
-      {section==="notes"&&<section className="panel full-panel"><div className="panel-head"><div><h3>الملاحظات والتعليقات</h3><p>يمكن للمدير والشريك إضافة التعليقات</p></div></div><form className="comment-compose" onSubmit={createComment}><textarea value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="اكتب ملاحظة أو تعليقاً للشريك…"/><button className="gold-button compact">إضافة التعليق</button></form><div className="activity-list notes-list">{comments.map(c=><div className="activity" key={c.id}><div className="activity-icon">✎</div><div><b>{c.body}</b><small>{c.author} · {dateLabel(c.created_at)}</small></div></div>)}</div>{comments.length===0&&<Empty text={labels.empty}/>}</section>}
-      {section==="team"&&isOwner&&<section className="panel full-panel"><div className="panel-head"><div><h3>إدارة حساب الشريك</h3><p>حساب الشريك بصلاحية مشاهدة البيانات والتعليق فقط، دون تعديل القيود المالية أو الشحنات</p></div><button className="gold-button compact" onClick={()=>setShowPartner(true)}>＋ إنشاء حساب الشريك</button></div><div className="empty-state"><div className="empty-icon">♙</div><h3>صلاحيات محددة وآمنة</h3><p>أنشئ حساب الدكتور أبو خليل بكلمة مرور مستقلة. لا تشارك كلمة مرور المدير.</p><div className="feature-chips"><span>مشاهدة كل السجلات</span><span>إضافة التعليقات</span><span>لا تعديل مالي</span><span>لا حذف</span></div></div></section>}
-    </div><footer>© 2026 CODELFA PARTNERS <span>مساحة خاصة لإدارة الشراكة</span></footer></main>
+    <aside className="sidebar"><div className="brand"><div className="brand-mark">C✦</div><div><div className="brand-name">CODELFA <b>PARTNERS</b></div><div className="brand-sub">PRIVATE BUSINESS PORTAL</div></div></div><div className="workspace"><span className="workspace-dot"/> مساحة الشراكة<small>حساب مشترك وآمن</small></div><div className="nav-caption">إدارة الأعمال</div><nav>{sections.map(item=><button key={item.id} className={section===item.id?"nav-item active":"nav-item"} onClick={()=>setSection(item.id)}><span className="nav-icon">{item.icon}</span><span>{item.label}</span>{section===item.id&&<i/>}</button>)}</nav><div className="sidebar-bottom"><div className="secure"><span>⌑</span><div><b>مساحة خاصة وآمنة</b><small>صلاحيات حسب نوع الحساب</small></div></div><div className="version">CODELFA PARTNERS · 1.1</div></div></aside>
+    <main className="main-area"><header className="topbar"><div className="mobile-brand"><div className="brand-mark small">C✦</div><b>CODELFA PARTNERS</b></div><div className="crumb">{labels.home}<span>/</span><b>{title}</b></div><div className="top-actions"><select className="lang-select" value={lang} onChange={e=>setLang(e.target.value as "ar"|"en")}><option value="ar">العربية</option><option value="en">English</option></select><div className="user-chip"><div className="avatar">{user.displayName.slice(0,1)}</div><div><b>{user.displayName}</b><small>{isOwner?"مدير النظام":labels.readOnly}</small></div><button className="chevron" onClick={signOut} title="تسجيل الخروج">↪</button></div></div></header>
+    <div className="mobile-nav">{sections.map(item=><button key={item.id} className={section===item.id?"selected":""} onClick={()=>setSection(item.id)}>{item.icon} {item.label}</button>)}</div>
+    <div className="content"><div className="welcome-row"><div><div className="eyebrow">PRIVATE PARTNERSHIP WORKSPACE</div><h1>{section==="overview"?"أهلاً، "+user.displayName:title}</h1><p>متابعة العمل التجاري والشحنات والحسابات من مكان واحد.</p></div><div className="date-pill">{new Date().toLocaleDateString(isAr?"ar":"en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div></div>
+      {notice&&<div className="preview-notice"><span>✓</span>{notice}<button onClick={()=>setNotice("")}>×</button></div>}{error&&<div className="error-banner">{error}<button onClick={()=>setError("")}>×</button></div>}
+      {section==="overview"&&<><div className="hero-card"><div className="hero-copy"><div className="hero-kicker">CODELFA · BUSINESS PARTNERSHIP</div><h2>كل تفاصيل العمل،<br/><em>في مكان واحد.</em></h2><p>بيانات مشتركة، صلاحيات واضحة، ومتابعة منظمة من الشراء حتى التسليم.</p><button onClick={()=>setSection("shipments")} className="gold-button">استعراض الشحنات ←</button></div><div className="hero-art"><img src="/apple-touch-icon.png" alt="CODELFA PARTNERS" /></div></div>
+        <div className="section-heading"><div><h2>الملخص المالي حسب العملة</h2><p>لا يتم خلط العملات أو تحويلها تلقائياً</p></div><button className="text-link" onClick={()=>void loadData()}>{labels.refresh} ↻</button></div>
+        <div className="stats-grid"><Stat label="الحاويات النشطة" value={String(shipments.length)} note="شحنات غير مؤرشفة"/><Stat label="الفواتير" value={String(invoices.length)} note="مشتريات ومبيعات"/><Stat label="الحركات المالية" value={String(entries.length)} note="مدفوعات ومصاريف وشيكات"/><Stat label="جهات التعامل" value={String(parties.length)} note="موردون وعملاء"/></div>
+        <div className="currency-grid">{totals.length?totals.map(t=><div className="currency-card" key={t.currency}><div className="currency-title">{t.currency}<span>ملخص العملة</span></div><div><small>المبيعات</small><b>{money(t.sales,t.currency)}</b></div><div><small>المشتريات</small><b>{money(t.purchases,t.currency)}</b></div><div><small>المصاريف</small><b>{money(t.costs,t.currency)}</b></div><div className="profit-line"><small>الربح الفعلي</small><b>{money(t.profit,t.currency)}</b></div><div><small>مقبوضات نقدية</small><b>{money(t.inc,t.currency)}</b></div><div><small>مدفوعات نقدية</small><b>{money(t.out,t.currency)}</b></div></div>):<Empty text={labels.empty}/>}</div>
+        <div className="two-col"><section className="panel"><div className="panel-head"><div><h3>آخر الشحنات</h3><p>حالة الحاويات المسجلة</p></div><button className="text-link" onClick={()=>setSection("shipments")}>عرض الكل ←</button></div><ShipmentTable rows={shipments.slice(0,5)} compact/></section><section className="panel"><div className="panel-head"><div><h3>آخر الفواتير</h3><p>المشتريات والمبيعات</p></div><button className="text-link" onClick={()=>setSection("invoices")}>عرض الكل ←</button></div><InvoiceTable invoices={invoices.slice(0,5)} parties={parties} compact/></section></div></>}
 
-    {showShipment&&<Modal title="إضافة حاوية جديدة" close={()=>setShowShipment(false)}><form onSubmit={createShipment} className="modal-form">
-      <label>رقم الحاوية<input value={shipmentForm.containerNo} onChange={e=>setShipmentForm({...shipmentForm,containerNo:e.target.value})} placeholder="OOLU1234567"/></label>
-      <label>رقم مرجعي<input value={shipmentForm.referenceNo} onChange={e=>setShipmentForm({...shipmentForm,referenceNo:e.target.value})}/></label>
-      <label>المورد / المصنع<input value={shipmentForm.supplierName} onChange={e=>setShipmentForm({...shipmentForm,supplierName:e.target.value})}/></label>
-      <div className="form-grid"><label>ميناء الشحن<input value={shipmentForm.origin} onChange={e=>setShipmentForm({...shipmentForm,origin:e.target.value})}/></label><label>ميناء الوصول<input value={shipmentForm.destination} onChange={e=>setShipmentForm({...shipmentForm,destination:e.target.value})}/></label></div>
-      <label>الحالة<select value={shipmentForm.status} onChange={e=>setShipmentForm({...shipmentForm,status:e.target.value})}>{shipmentStatuses.map(s=><option value={s[0]} key={s[0]}>{s[1]}</option>)}</select></label>
-      <div className="form-grid"><label>موعد الوصول المتوقع<input type="date" value={shipmentForm.eta} onChange={e=>setShipmentForm({...shipmentForm,eta:e.target.value})}/></label><label>رقم بوليصة الشحن<input value={shipmentForm.billOfLadingNo} onChange={e=>setShipmentForm({...shipmentForm,billOfLadingNo:e.target.value})}/></label></div>
-      <label>ملاحظات<textarea value={shipmentForm.notes} onChange={e=>setShipmentForm({...shipmentForm,notes:e.target.value})}/></label><div className="modal-actions"><button type="button" className="plain-button" onClick={()=>setShowShipment(false)}>إلغاء</button><button className="gold-button compact">حفظ الحاوية</button></div>
-    </form></Modal>}
-    {showEntry&&<Modal title="تسجيل عملية مالية" close={()=>setShowEntry(false)}><form onSubmit={createEntry} className="modal-form">
-      <label>نوع العملية<select value={entryForm.entryType} onChange={e=>setEntryForm({...entryForm,entryType:e.target.value})}>{entryTypes.map(t=><option value={t[0]} key={t[0]}>{t[1]}</option>)}</select></label>
-      <div className="form-grid"><label>المبلغ<input required type="number" min="0.01" step="0.01" value={entryForm.amount} onChange={e=>setEntryForm({...entryForm,amount:e.target.value})}/></label><label>العملة<select value={entryForm.currency} onChange={e=>setEntryForm({...entryForm,currency:e.target.value})}>{currencies.map(c=><option key={c}>{c}</option>)}</select></label></div>
-      <div className="form-grid"><label>الاتجاه<select value={entryForm.direction} onChange={e=>setEntryForm({...entryForm,direction:e.target.value as "in"|"out"})}><option value="out">خارج</option><option value="in">داخل</option></select></label><label>التاريخ<input required type="date" value={entryForm.entryDate} onChange={e=>setEntryForm({...entryForm,entryDate:e.target.value})}/></label></div>
-      <label>البيان<input value={entryForm.description} onChange={e=>setEntryForm({...entryForm,description:e.target.value})}/></label><label>رقم مرجعي<input value={entryForm.referenceNo} onChange={e=>setEntryForm({...entryForm,referenceNo:e.target.value})}/></label>
-      <div className="modal-actions"><button type="button" className="plain-button" onClick={()=>setShowEntry(false)}>إلغاء</button><button className="gold-button compact">حفظ العملية</button></div>
-    </form></Modal>}
-    {showPartner&&<Modal title="إنشاء حساب الشريك" close={()=>setShowPartner(false)}><form onSubmit={createPartner} className="modal-form"><label>اسم المستخدم<input required minLength={3} value={partnerName} onChange={e=>setPartnerName(e.target.value)}/></label><label>الاسم الظاهر<input required value={partnerDisplay} onChange={e=>setPartnerDisplay(e.target.value)}/></label><label>كلمة مرور مؤقتة (12 حرفاً على الأقل)<input required minLength={12} type="password" value={partnerPassword} onChange={e=>setPartnerPassword(e.target.value)}/></label><div className="modal-actions"><button type="button" className="plain-button" onClick={()=>setShowPartner(false)}>إلغاء</button><button className="gold-button compact">إنشاء الحساب</button></div></form></Modal>}
-  </div>;
+      {section==="shipments"&&<>{pageHeader("LOGISTICS","الشحنات والحاويات","رقم الحاوية والمرجع والموانئ والمورد والمراحل والمرفقات.",isOwner&&<button className="gold-button compact" onClick={()=>{setEditingId(null);setShipmentForm(blankShipment());setModal("shipment");}}>＋ إضافة شحنة</button>)}<div className="panel full-panel"><ShipmentTable rows={shipments} detailed isOwner={isOwner} onEdit={startShipmentEdit} onArchive={id=>void archive("/api/shipments/"+id,"الشحنة")} onBudget={id=>{setBudgetForm({...budgetForm,shipmentId:id,expected:""});setModal("budget");}} onUpload={id=>setUploadTarget({type:"shipment",id})} documents={documents}/>{shipments.length===0&&<Empty text={labels.empty}/>}</div></>}
+
+      {section==="invoices"&&<>{pageHeader("TRADE DOCUMENTS","المشتريات والمبيعات والفواتير","فواتير مفصلة ببنود وكميات وأسعار وربط بالحاوية والعميل أو المورد.",isOwner&&<button className="gold-button compact" onClick={()=>{setEditingId(null);setInvoiceForm(blankInvoice());setModal("invoice");}}>＋ إنشاء فاتورة</button>)}<div className="panel full-panel"><InvoiceTable invoices={invoices} parties={parties} detailed isOwner onEdit={startInvoiceEdit} onArchive={id=>void archive("/api/invoices/"+id,"الفاتورة")} onUpload={id=>setUploadTarget({type:"invoice",id})} documents={documents} lines={invoiceLines}/>{invoices.length===0&&<Empty text={labels.empty}/>}</div></>}
+
+      {section==="finance"&&<>{pageHeader("CASH & PAYMENTS","المدفوعات والشيكات","الحوالات والدفعات والمصاريف والإضافات والشيكات مع المواعيد والربط.",isOwner&&<button className="gold-button compact" onClick={()=>{setEditingId(null);setEntryForm(blankEntry());setModal("entry");}}>＋ تسجيل حركة</button>)}<div className="panel full-panel"><div className="table-wrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>الحاوية</th><th>البيان</th><th>الاتجاه</th><th>المبلغ</th><th>الحالة</th>{isOwner&&<th>إدارة</th>}</tr></thead><tbody>{entries.map(x=><tr key={x.id}><td>{dateLabel(x.entry_date)}</td><td>{entryTypes.find(t=>t[0]===x.entry_type)?.[1]||x.entry_type}</td><td>{x.counterparty_name||"—"}</td><td className="mono">{x.container_no||"—"}</td><td>{x.description||x.reference_no||"—"}{x.cheque_no&&<small className="row-id">شيك {x.cheque_no} · {x.bank_name||""}</small>}</td><td><span className={x.direction==="in"?"pill positive":"pill neutral"}>{x.direction==="in"?"داخل":"خارج"}</span></td><td className="mono">{money(x.amount_minor,x.currency)}</td><td>{x.status}</td>{isOwner&&<td><div className="row-actions"><button onClick={()=>startEntryEdit(x)}>تعديل</button><button className="danger-text" onClick={()=>void archive("/api/financial-entries/"+x.id,"الحركة")}>أرشفة</button><button onClick={()=>setUploadTarget({type:"financial_entry",id:x.id})}>مرفق</button></div></td>}</tr>)}</tbody></table></div>{entries.length===0&&<Empty text={labels.empty}/>}</div></>}
+
+      {section==="parties"&&<>{pageHeader("CONTACTS","الموردون والعملاء","سجل الجهات وبيانات الاتصال لمتابعة المشتريات والمبيعات والأرصدة.",isOwner&&<button className="gold-button compact" onClick={()=>setModal("party")}>＋ إضافة جهة</button>)}<div className="cards-grid">{parties.map(p=><div className="panel party-card" key={p.id}><div className="party-top"><span className="avatar">{p.name.slice(0,1)}</span><div><b>{p.name}</b><small>{p.counterparty_type==="supplier"?"مورد":p.counterparty_type==="customer"?"عميل":"جهة أخرى"}</small></div></div><p>{p.phone||"لا يوجد هاتف"}<br/>{p.email||"لا يوجد بريد"}</p><button className="text-link" onClick={()=>{setStatementParty(p.id);setSection("statements");}}>كشف الحساب ←</button></div>)}</div>{parties.length===0&&<Empty text={labels.empty}/>}</>}
+
+      {section==="statements"&&<>{pageHeader("ACCOUNT STATEMENTS","كشوف حسابات العملاء والموردين","حركة الفواتير والمدفوعات حسب الطرف والعملة.")}<div className="panel full-panel"><div className="filter-row"><label>اختر العميل أو المورد<select value={statementParty} onChange={e=>setStatementParty(e.target.value)}><option value="">اختر جهة التعامل</option>{parties.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label></div>{statementParty?<><div className="table-wrap"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>العملة</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>{statementRows.map((r,i)=>{const prev=statementRows.slice(0,i+1).filter(x=>x.currency===r.currency);const debit=prev.reduce((a,x)=>a+x.debit,0),credit=prev.reduce((a,x)=>a+x.credit,0);return <tr key={r.id}><td>{dateLabel(r.date)}</td><td>{r.label}</td><td>{r.currency}</td><td>{r.debit?money(r.debit,r.currency):"—"}</td><td>{r.credit?money(r.credit,r.currency):"—"}</td><td className="mono">{money(debit-credit,r.currency)}</td></tr>})}</tbody></table></div>{statementRows.length===0&&<Empty text="لا توجد حركات لهذا الطرف."/>}</>:<Empty text="اختر جهة التعامل لعرض كشف الحساب."/>}</div></>}
+
+      {section==="reports"&&<>{pageHeader("MANAGEMENT REPORTS","الأرباح والتقارير","المبيعات ناقص المشتريات والمصاريف، مع مقارنة التقديري والفعلي لكل حاوية.")}<div className="currency-grid">{totals.map(t=><div className="currency-card" key={t.currency}><div className="currency-title">{t.currency}<span>الربح حسب العملة</span></div><div><small>المبيعات الفعلية</small><b>{money(t.sales,t.currency)}</b></div><div><small>المشتريات الفعلية</small><b>{money(t.purchases,t.currency)}</b></div><div><small>المصاريف الفعلية</small><b>{money(t.costs,t.currency)}</b></div><div className="profit-line"><small>صافي الربح الفعلي</small><b>{money(t.profit,t.currency)}</b></div></div>)}</div><div className="panel full-panel"><div className="panel-head"><div><h3>ربحية الشحنات</h3><p>التقديري مقابل الفعلي، دون تحويل بين العملات</p></div></div><div className="table-wrap"><table><thead><tr><th>الحاوية</th><th>العملة</th><th>مبيعات متوقعة</th><th>تكلفة متوقعة</th><th>مبيعات فعلية</th><th>تكاليف فعلية</th><th>الربح الفعلي</th></tr></thead><tbody>{shipments.flatMap(s=>currencies.map(c=>{const b=budgets.filter(x=>x.shipment_id===s.id&&x.currency===c);const expectedSale=b.filter(x=>x.budget_type==="sale").reduce((a,x)=>a+x.expected_minor,0);const expectedCost=b.filter(x=>x.budget_type!=="sale").reduce((a,x)=>a+x.expected_minor,0);const actualSale=invoices.filter(x=>x.shipment_id===s.id&&x.currency===c&&x.invoice_type==="sale").reduce((a,x)=>a+x.total_minor,0);const actualPurchase=invoices.filter(x=>x.shipment_id===s.id&&x.currency===c&&x.invoice_type==="purchase").reduce((a,x)=>a+x.total_minor,0);const actualExpense=entries.filter(x=>x.shipment_id===s.id&&x.currency===c&&x.entry_type==="expense").reduce((a,x)=>a+x.amount_minor,0);const cost=actualPurchase+actualExpense;if(!b.length&&!actualSale&&!cost)return null;return <tr key={s.id+c}><td className="mono">{s.container_no||s.reference_no}</td><td>{c}</td><td>{money(expectedSale,c)}</td><td>{money(expectedCost,c)}</td><td>{money(actualSale,c)}</td><td>{money(cost,c)}</td><td className="mono">{money(actualSale-cost,c)}</td></tr>})).filter(Boolean)}</tbody></table></div>{!budgets.length&&!invoices.length&&<Empty text="أضف فواتير واربطها بالحاويات، ثم أدخل التكاليف التقديرية من صفحة الشحنات."/>}</div></>}
+
+      {section==="notes"&&<>{pageHeader("PARTNER NOTES","الملاحظات والتعليقات","مساحة مشتركة للتوضيح والمتابعة بين المدير والشريك.")}<section className="panel full-panel"><form className="comment-compose" onSubmit={addComment}><textarea required value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="اكتب ملاحظة أو تعليقاً للشريك…"/><select value={commentTarget} onChange={e=>setCommentTarget(e.target.value)}><option value="general">ملاحظة عامة</option><option value="shipment">شحنة</option><option value="financial_entry">حركة مالية</option></select><button className="gold-button compact">إضافة التعليق</button></form><div className="activity-list">{comments.map(c=><div className="activity" key={c.id}><div className="activity-icon">✎</div><div><b>{c.body}</b><small>{c.author} · {new Date(c.created_at).toLocaleString("en-GB")}</small></div></div>)}</div>{comments.length===0&&<Empty text={labels.empty}/>}</section></>}
+
+      {section==="team"&&isOwner&&<>{pageHeader("ACCESS CONTROL","حساب الشريك","حساب مستقل للدكتور أبو خليل بصلاحية مشاهدة البيانات والتعليق فقط.",<button className="gold-button compact" onClick={()=>setModal("partner")}>＋ إنشاء حساب الشريك</button>)}<div className="panel permission-panel"><h3>صلاحيات الحساب</h3><div className="permission-grid"><span>مشاهدة الشحنات والفواتير</span><span>مشاهدة الحسابات والتقارير</span><span>رفع التعليقات</span><b>لا تعديل مالي · لا حذف · لا إدارة مستخدمين</b></div></div></>}
+    </div><footer>© 2026 CODELFA PARTNERS <span>TRUST · CLARITY · PARTNERSHIP</span></footer></main>
+
+    {modal==="shipment"&&<Modal title={editingId?"تعديل بيانات الشحنة":"إضافة شحنة جديدة"} close={()=>setModal(null)}><form className="modal-form" onSubmit={saveShipment}><div className="form-grid"><label>رقم الحاوية<input value={shipmentForm.containerNo} onChange={e=>setShipmentForm({...shipmentForm,containerNo:e.target.value})}/></label><label>الرقم المرجعي<input value={shipmentForm.referenceNo} onChange={e=>setShipmentForm({...shipmentForm,referenceNo:e.target.value})}/></label></div><label>المورد / المصنع<input value={shipmentForm.supplierName} onChange={e=>setShipmentForm({...shipmentForm,supplierName:e.target.value})}/></label><div className="form-grid"><label>ميناء الشحن<input value={shipmentForm.origin} onChange={e=>setShipmentForm({...shipmentForm,origin:e.target.value})}/></label><label>ميناء الوصول<input value={shipmentForm.destination} onChange={e=>setShipmentForm({...shipmentForm,destination:e.target.value})}/></label></div><label>مرحلة الشحن<select value={shipmentForm.status} onChange={e=>setShipmentForm({...shipmentForm,status:e.target.value})}>{shipmentStatuses.map(s=><option value={s[0]} key={s[0]}>{s[1]}</option>)}</select></label><div className="form-grid"><label>تاريخ الشراء<input type="date" value={shipmentForm.purchaseDate} onChange={e=>setShipmentForm({...shipmentForm,purchaseDate:e.target.value})}/></label><label>موعد المغادرة ETD<input type="date" value={shipmentForm.etd} onChange={e=>setShipmentForm({...shipmentForm,etd:e.target.value})}/></label><label>موعد الوصول ETA<input type="date" value={shipmentForm.eta} onChange={e=>setShipmentForm({...shipmentForm,eta:e.target.value})}/></label><label>رقم بوليصة الشحن<input value={shipmentForm.billOfLadingNo} onChange={e=>setShipmentForm({...shipmentForm,billOfLadingNo:e.target.value})}/></label></div><label>ملاحظات<textarea value={shipmentForm.notes} onChange={e=>setShipmentForm({...shipmentForm,notes:e.target.value})}/></label><ModalActions close={()=>setModal(null)} submit={editingId?"حفظ التعديلات":"حفظ الشحنة"}/></form></Modal>}
+    {modal==="invoice"&&<Modal title={editingId?"تعديل فاتورة":"إنشاء فاتورة شراء / مبيعات"} close={()=>setModal(null)} wide><form className="modal-form" onSubmit={saveInvoice}><div className="form-grid"><label>نوع الفاتورة<select value={invoiceForm.invoiceType} onChange={e=>setInvoiceForm({...invoiceForm,invoiceType:e.target.value as "sale"|"purchase"})}><option value="sale">مبيعات</option><option value="purchase">مشتريات</option></select></label><label>رقم الفاتورة<input required value={invoiceForm.invoiceNo} onChange={e=>setInvoiceForm({...invoiceForm,invoiceNo:e.target.value})}/></label><label>العميل / المورد<select value={invoiceForm.counterpartyId} onChange={e=>setInvoiceForm({...invoiceForm,counterpartyId:e.target.value})}><option value="">غير محدد</option>{parties.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label><label>ربط بالحاوية<select value={invoiceForm.shipmentId} onChange={e=>setInvoiceForm({...invoiceForm,shipmentId:e.target.value})}><option value="">بدون ربط</option>{shipments.map(s=><option value={s.id} key={s.id}>{s.container_no||s.reference_no}</option>)}</select></label><label>تاريخ الفاتورة<input type="date" required value={invoiceForm.invoiceDate} onChange={e=>setInvoiceForm({...invoiceForm,invoiceDate:e.target.value})}/></label><label>تاريخ الاستحقاق<input type="date" value={invoiceForm.dueDate} onChange={e=>setInvoiceForm({...invoiceForm,dueDate:e.target.value})}/></label><label>العملة<select value={invoiceForm.currency} onChange={e=>setInvoiceForm({...invoiceForm,currency:e.target.value})}>{currencies.map(c=><option key={c}>{c}</option>)}</select></label><label>الحالة<select value={invoiceForm.status} onChange={e=>setInvoiceForm({...invoiceForm,status:e.target.value})}><option value="issued">صادرة</option><option value="draft">مسودة</option><option value="partially_paid">مدفوعة جزئياً</option><option value="paid">مدفوعة</option></select></label></div><div className="line-items"><div className="panel-head"><div><h3>بنود الفاتورة</h3><p>أضف الأصناف والكميات والوحدات وسعر الوحدة</p></div><button type="button" className="plain-button" onClick={()=>setInvoiceForm({...invoiceForm,lines:[...invoiceForm.lines,{description:"",quantity:"1",unit:"pcs",unitPrice:""}]})}>＋ بند</button></div>{invoiceForm.lines.map((l,i)=><div className="invoice-line" key={i}><label>الوصف / الصنف<input required value={l.description} onChange={e=>setInvoiceForm({...invoiceForm,lines:invoiceForm.lines.map((x,j)=>j===i?{...x,description:e.target.value}:x)})}/></label><label>الكمية<input required type="number" min="0.001" step="0.001" value={l.quantity} onChange={e=>setInvoiceForm({...invoiceForm,lines:invoiceForm.lines.map((x,j)=>j===i?{...x,quantity:e.target.value}:x)})}/></label><label>الوحدة<input value={l.unit} onChange={e=>setInvoiceForm({...invoiceForm,lines:invoiceForm.lines.map((x,j)=>j===i?{...x,unit:e.target.value}:x)})}/></label><label>سعر الوحدة<input required type="number" min="0" step="0.01" value={l.unitPrice} onChange={e=>setInvoiceForm({...invoiceForm,lines:invoiceForm.lines.map((x,j)=>j===i?{...x,unitPrice:e.target.value}:x)})}/></label>{invoiceForm.lines.length>1&&<button type="button" className="danger-text" onClick={()=>setInvoiceForm({...invoiceForm,lines:invoiceForm.lines.filter((_,j)=>j!==i)})}>حذف</button>}</div>)}</div><div className="form-grid"><label>خصم<input type="number" min="0" step="0.01" value={invoiceForm.discount} onChange={e=>setInvoiceForm({...invoiceForm,discount:e.target.value})}/></label><label>ضريبة / رسوم<input type="number" min="0" step="0.01" value={invoiceForm.tax} onChange={e=>setInvoiceForm({...invoiceForm,tax:e.target.value})}/></label></div><label>ملاحظات<input value={invoiceForm.notes} onChange={e=>setInvoiceForm({...invoiceForm,notes:e.target.value})}/></label><div className="modal-actions"><button type="button" className="plain-button" onClick={()=>setModal(null)}>إلغاء</button><button className="gold-button compact">حفظ الفاتورة</button></div></form></Modal>}
+    {modal==="entry"&&<Modal title={editingId?"تعديل حركة مالية":"تسجيل دفعة أو مصروف أو شيك"} close={()=>setModal(null)} wide><form className="modal-form" onSubmit={saveEntry}><div className="form-grid"><label>نوع الحركة<select value={entryForm.entryType} onChange={e=>setEntryForm({...entryForm,entryType:e.target.value})}>{entryTypes.map(t=><option value={t[0]} key={t[0]}>{t[1]}</option>)}</select></label><label>المبلغ<input type="number" required min="0.01" step="0.01" value={entryForm.amount} onChange={e=>setEntryForm({...entryForm,amount:e.target.value})}/></label><label>العملة<select value={entryForm.currency} onChange={e=>setEntryForm({...entryForm,currency:e.target.value})}>{currencies.map(c=><option key={c}>{c}</option>)}</select></label><label>الاتجاه<select value={entryForm.direction} onChange={e=>setEntryForm({...entryForm,direction:e.target.value as "in"|"out"})}><option value="out">خارج</option><option value="in">داخل</option></select></label><label>التاريخ<input type="date" required value={entryForm.entryDate} onChange={e=>setEntryForm({...entryForm,entryDate:e.target.value})}/></label><label>تاريخ الاستحقاق<input type="date" value={entryForm.dueDate} onChange={e=>setEntryForm({...entryForm,dueDate:e.target.value})}/></label><label>الطرف<select value={entryForm.counterpartyId} onChange={e=>setEntryForm({...entryForm,counterpartyId:e.target.value})}><option value="">غير محدد</option>{parties.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label><label>الحاوية<select value={entryForm.shipmentId} onChange={e=>setEntryForm({...entryForm,shipmentId:e.target.value})}><option value="">بدون ربط</option>{shipments.map(s=><option value={s.id} key={s.id}>{s.container_no||s.reference_no}</option>)}</select></label><label>طريقة الدفع<select value={entryForm.paymentMethod} onChange={e=>setEntryForm({...entryForm,paymentMethod:e.target.value})}><option value="bank_transfer">حوالة بنكية</option><option value="cash">نقداً</option><option value="cheque">شيك</option><option value="other">أخرى</option></select></label><label>رقم الشيك<input value={entryForm.chequeNo} onChange={e=>setEntryForm({...entryForm,chequeNo:e.target.value})}/></label><label>البنك<input value={entryForm.bankName} onChange={e=>setEntryForm({...entryForm,bankName:e.target.value})}/></label><label>الحالة<select value={entryForm.status} onChange={e=>setEntryForm({...entryForm,status:e.target.value})}><option value="recorded">مسجلة</option><option value="pending">معلقة</option><option value="cleared">منفذة / مصروفة</option><option value="cancelled">ملغاة</option></select></label></div><label>البيان<input value={entryForm.description} onChange={e=>setEntryForm({...entryForm,description:e.target.value})}/></label><label>المرجع<input value={entryForm.referenceNo} onChange={e=>setEntryForm({...entryForm,referenceNo:e.target.value})}/></label><label>ملاحظات<textarea value={entryForm.notes} onChange={e=>setEntryForm({...entryForm,notes:e.target.value})}/></label><ModalActions close={()=>setModal(null)} submit={editingId?"حفظ التعديلات":"حفظ الحركة"}/></form></Modal>}
+    {modal==="party"&&<Modal title="إضافة مورد أو عميل" close={()=>setModal(null)}><form className="modal-form" onSubmit={saveParty}><label>الاسم<input required value={partyForm.name} onChange={e=>setPartyForm({...partyForm,name:e.target.value})}/></label><label>التصنيف<select value={partyForm.type} onChange={e=>setPartyForm({...partyForm,type:e.target.value})}><option value="supplier">مورد</option><option value="customer">عميل</option><option value="other">أخرى</option></select></label><label>الهاتف<input value={partyForm.phone} onChange={e=>setPartyForm({...partyForm,phone:e.target.value})}/></label><label>البريد الإلكتروني<input type="email" value={partyForm.email} onChange={e=>setPartyForm({...partyForm,email:e.target.value})}/></label><label>ملاحظات<textarea value={partyForm.notes} onChange={e=>setPartyForm({...partyForm,notes:e.target.value})}/></label><ModalActions close={()=>setModal(null)} submit="حفظ جهة التعامل"/></form></Modal>}
+    {modal==="budget"&&<Modal title="القيم التقديرية للشحنة" close={()=>setModal(null)}><form className="modal-form" onSubmit={saveBudget}><label>نوع التقدير<select value={budgetForm.budgetType} onChange={e=>setBudgetForm({...budgetForm,budgetType:e.target.value})}><option value="sale">مبيعات متوقعة</option><option value="purchase">مشتريات متوقعة</option><option value="expense">مصاريف متوقعة</option></select></label><label>العملة<select value={budgetForm.currency} onChange={e=>setBudgetForm({...budgetForm,currency:e.target.value})}>{currencies.map(c=><option key={c}>{c}</option>)}</select></label><label>القيمة المتوقعة<input required type="number" min="0" step="0.01" value={budgetForm.expected} onChange={e=>setBudgetForm({...budgetForm,expected:e.target.value})}/></label><label>ملاحظات<textarea value={budgetForm.notes} onChange={e=>setBudgetForm({...budgetForm,notes:e.target.value})}/></label><ModalActions close={()=>setModal(null)} submit="حفظ التقدير"/></form></Modal>}
+    {modal==="partner"&&<Modal title="إنشاء حساب الشريك" close={()=>setModal(null)}><form className="modal-form" onSubmit={savePartner}><label>اسم المستخدم<input required minLength={3} value={partnerForm.username} onChange={e=>setPartnerForm({...partnerForm,username:e.target.value})}/></label><label>الاسم الظاهر<input required value={partnerForm.displayName} onChange={e=>setPartnerForm({...partnerForm,displayName:e.target.value})}/></label><label>كلمة مرور مؤقتة<input required minLength={12} type="password" value={partnerForm.password} onChange={e=>setPartnerForm({...partnerForm,password:e.target.value})}/></label><p className="hint">الشريك يشاهد البيانات ويضيف التعليقات فقط، ولا يمكنه تعديل الأموال أو الشحنات.</p><ModalActions close={()=>setModal(null)} submit="إنشاء حساب الشريك"/></form></Modal>}
+    {uploadTarget&&<Modal title="رفع مستند أو صورة" close={()=>setUploadTarget(null)}><div className="modal-form"><p className="hint">الأنواع المدعومة PDF وJPG وPNG وWEBP. الحد الأقصى 900 كيلوبايت للملف.</p><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" disabled={uploading} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadFile(file);}}/><button className="plain-button" disabled={uploading} onClick={()=>setUploadTarget(null)}>{uploading?"جارٍ الرفع…":"إغلاق"}</button></div></Modal>}
+    </div>;
 }
 
-function Stat({label,value,note,gold=false}:{label:string;value:string;note:string;gold?:boolean}) {return <div className={gold?"stat-card gold-stat":"stat-card"}><div className="stat-top"><span>{label}</span><i>◈</i></div><strong>{value}</strong><small>{note}</small></div>;}
-function Empty({text}:{text:string}) {return <div className="empty-row">{text}</div>;}
-function ShipmentTable({rows,detailed=false}:{rows:Shipment[];detailed?:boolean}) {
-  return <div className="table-wrap"><table><thead><tr><th>رقم الحاوية</th><th>المورد</th><th>المسار</th><th>الحالة</th>{detailed&&<th>الوصول المتوقع</th>}</tr></thead><tbody>{rows.map(row=><tr key={row.id}><td><b className="mono">{row.container_no||"—"}</b><small className="row-id">{row.reference_no||row.id.slice(0,8)}</small></td><td>{row.supplier_name||"—"}</td><td>{[row.origin,row.destination].filter(Boolean).join(" → ")||"—"}</td><td><span className={row.status==="received"||row.status==="closed"?"status done":row.status==="customs_clearance"?"status warning":"status transit"}>{shipmentStatuses.find(s=>s[0]===row.status)?.[1]||row.status}</span></td>{detailed&&<td>{row.eta?dateLabel(row.eta):"—"}</td>}</tr>)}</tbody></table></div>;
+function Stat({label,value,note}:{label:string;value:string;note:string}){return <div className="stat-card"><div className="stat-top"><span>{label}</span><i>◈</i></div><strong>{value}</strong><small>{note}</small></div>}
+function Empty({text}:{text:string}){return <div className="empty-row">{text}</div>}
+function ShipmentTable({rows,detailed=false,compact=false,isOwner=false,onEdit,onArchive,onBudget,onUpload,documents=[]}:{rows:Shipment[];detailed?:boolean;compact?:boolean;isOwner?:boolean;onEdit?:(s:Shipment)=>void;onArchive?:(id:string)=>void;onBudget?:(id:string)=>void;onUpload?:(id:string)=>void;documents?:DocumentItem[]}){
+  return <div className="table-wrap"><table><thead><tr><th>الحاوية / المرجع</th><th>المورد</th><th>المسار</th><th>الحالة</th>{detailed&&<><th>ETD / ETA</th><th>بوليصة الشحن</th></>}{isOwner&&<th>إدارة</th>}</tr></thead><tbody>{rows.map(s=><tr key={s.id}><td><b className="mono">{s.container_no||"—"}</b><small className="row-id">{s.reference_no||s.id.slice(0,8)}</small></td><td>{s.supplier_name||"—"}</td><td>{[s.origin,s.destination].filter(Boolean).join(" → ")||"—"}</td><td><span className={s.status==="received"||s.status==="closed"?"pill positive":"pill neutral"}>{shipmentStatuses.find(x=>x[0]===s.status)?.[1]||s.status}</span></td>{detailed&&<><td>{dateLabel(s.etd)} / {dateLabel(s.eta)}</td><td>{s.bill_of_lading_no||"—"}<small className="row-id">{documents.filter(d=>d.target_type==="shipment"&&d.target_id===s.id).length} مرفق</small></td></>}{isOwner&&<td><div className="row-actions"><button onClick={()=>onEdit?.(s)}>تعديل</button><button onClick={()=>onBudget?.(s.id)}>تقدير</button><button onClick={()=>onUpload?.(s.id)}>ملف</button><button className="danger-text" onClick={()=>onArchive?.(s.id)}>أرشفة</button></div></td>}</tr>)}</tbody></table></div>;
 }
-function Modal({title,close,children}:{title:string;close:()=>void;children:React.ReactNode}) {return <div className="modal-backdrop" onMouseDown={close}><div className="modal" onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><h3>{title}</h3><p>تُحفظ البيانات في مساحة الشراكة المشتركة</p></div><button onClick={close}>×</button></div>{children}</div></div>;}
+function InvoiceTable({invoices,parties,detailed=false,compact=false,isOwner=false,onEdit,onArchive,onUpload,documents=[],lines=[]}:{invoices:Invoice[];parties:Party[];detailed?:boolean;compact?:boolean;isOwner?:boolean;onEdit?:(i:Invoice)=>void;onArchive?:(id:string)=>void;onUpload?:(id:string)=>void;documents?:DocumentItem[];lines?:InvoiceLine[]}){
+  return <div className="table-wrap"><table><thead><tr><th>رقم الفاتورة</th><th>النوع</th><th>الطرف</th><th>الحاوية</th><th>التاريخ</th><th>القيمة</th><th>الحالة</th>{detailed&&<th>بنود / مرفقات</th>}{isOwner&&<th>إدارة</th>}</tr></thead><tbody>{invoices.map(i=><tr key={i.id}><td className="mono">{i.invoice_no}</td><td>{i.invoice_type==="sale"?"مبيعات":"مشتريات"}</td><td>{i.counterparty_name||parties.find(p=>p.id===i.counterparty_id)?.name||"—"}</td><td className="mono">{i.container_no||"—"}</td><td>{dateLabel(i.invoice_date)}</td><td className="mono">{money(i.total_minor,i.currency)}</td><td>{i.status}</td>{detailed&&<td>{lines.filter(l=>l.invoice_id===i.id).length} بند · {documents.filter(d=>d.target_type==="invoice"&&d.target_id===i.id).length} مرفق</td>}{isOwner&&<td><div className="row-actions"><button onClick={()=>onEdit?.(i)}>تعديل</button><button onClick={()=>onUpload?.(i.id)}>مرفق</button><button className="danger-text" onClick={()=>onArchive?.(i.id)}>أرشفة</button></div></td>}</tr>)}</tbody></table></div>;
+}
+function Modal({title,close,children,wide=false}:{title:string;close:()=>void;children:ReactNode;wide?:boolean}){return <div className="modal-backdrop" onMouseDown={close}><div className={wide?"modal modal-wide":"modal"} onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><h3>{title}</h3><p>تُحفظ البيانات في مساحة الشراكة المشتركة</p></div><button onClick={close}>×</button></div>{children}</div></div>}
+function ModalActions({close,submit}:{close:()=>void;submit:string}){return <div className="modal-actions"><button type="button" className="plain-button" onClick={close}>إلغاء</button><button className="gold-button compact">{submit}</button></div>}
