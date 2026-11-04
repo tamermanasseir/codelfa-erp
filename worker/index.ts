@@ -385,6 +385,19 @@ async function handle(request: Request, env: Env): Promise<Response> {
     await audit(env,user.id,"create","counterparty",id,{name,type});
     return json({ok:true,id},201);
   }
+  const counterpartyMatch=path.match(/^\/api\/counterparties\/([a-f0-9-]+)$/i);
+  if(counterpartyMatch&&request.method==="PATCH"){
+    if(!ownerOnly(user)) return fail("Partner access is read-only.",403);
+    const data=await body(request),id=counterpartyMatch[1],name=text(data?.name,160);
+    if(!name) return fail("Enter a valid contact name.");
+    const existing=await env.DB.prepare("SELECT id FROM counterparties WHERE id=? AND archived_at IS NULL").bind(id).first<{id:string}>();
+    if(!existing) return fail("Contact not found.",404);
+    const result=await env.DB.prepare("UPDATE counterparties SET name=?,phone=?,email=?,notes=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND archived_at IS NULL")
+      .bind(name,text(data?.phone,60)||null,text(data?.email,160)||null,text(data?.notes,2000)||null,id).run();
+    if(!result.meta.changes) return fail("Contact not found.",404);
+    await audit(env,user.id,"update","counterparty",id,{name});
+    return json({ok:true});
+  }
 
   if (path === "/api/invoices" && request.method === "GET") {
     const [invoices,lines,extras]=await Promise.all([
