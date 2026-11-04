@@ -912,3 +912,24 @@ body{background:linear-gradient(135deg,#eef2f6 0%,#f5f3ee 52%,#eaf0f4 100%)}
     color:#7b8b9b;font-size:9px;text-align:center;letter-spacing:2px;
   }
 }
+
+
+/* Dashboard live business KPIs */
+.dashboard-kpis{margin:26px 0 30px}
+.dashboard-kpis-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:15px}
+.dashboard-kpis-heading h2{margin:5px 0;color:#142f49;font-size:20px;font-weight:900}
+.dashboard-kpis-heading p{margin:0;color:#748598;font-size:11px}
+.dashboard-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.dashboard-kpi-card{position:relative;display:flex;min-width:0;min-height:158px;flex-direction:column;align-items:flex-start;justify-content:center;gap:9px;padding:19px 20px;text-align:right;border:1px solid #dce4eb;border-radius:17px;background:linear-gradient(145deg,#fff 0%,#f6f8fa 100%);box-shadow:0 9px 24px #102b4610;color:#173650;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.dashboard-kpi-card:hover{transform:translateY(-3px);border-color:#cba45e;box-shadow:0 14px 30px #102b4618}
+.dashboard-kpi-icon{position:absolute;left:17px;top:17px;display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:#edf2f6;color:#385a75;font-size:19px;font-weight:900}
+.dashboard-kpi-card small{font-size:12px;font-weight:800;color:#718398;padding-left:38px}
+.dashboard-kpi-card strong{display:block;max-width:100%;font-size:clamp(19px,2vw,26px);line-height:1.35;font-weight:950;color:#173650;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.dashboard-kpi-card em{font-style:normal;font-size:10px;color:#8795a3;line-height:1.5}
+.dashboard-kpi-card.kpi-gold{background:linear-gradient(145deg,#fffdf8,#f8f1e4);border-color:#e7d8b8}
+.dashboard-kpi-card.kpi-gold .dashboard-kpi-icon{background:#f1e5ca;color:#98712f}
+.dashboard-kpi-card.kpi-gold strong{color:#98712f;font-size:clamp(16px,1.65vw,21px)}
+.dashboard-kpi-card.kpi-blue .dashboard-kpi-icon{background:#e4eff8;color:#356b91}
+.dashboard-kpi-card.kpi-green .dashboard-kpi-icon{background:#e3f2ec;color:#28745e}
+@media(max-width:950px){.dashboard-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-kpi-card{min-height:142px}}
+@media(max-width:520px){.dashboard-kpis{margin:20px 0 24px}.dashboard-kpis-heading h2{font-size:17px}.dashboard-kpi-grid{gap:9px}.dashboard-kpi-card{min-height:132px;padding:15px 13px;border-radius:14px}.dashboard-kpi-icon{left:12px;top:12px;width:31px;height:31px;border-radius:10px;font-size:16px}.dashboard-kpi-card small{font-size:10px;padding-left:30px}.dashboard-kpi-card strong{font-size:19px}.dashboard-kpi-card.kpi-gold strong{font-size:15px}.dashboard-kpi-card em{font-size:9px}}
