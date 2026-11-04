@@ -900,10 +900,13 @@ body{background:linear-gradient(135deg,#eef2f6 0%,#f5f3ee 52%,#eaf0f4 100%)}
   .print-sheet th{background:#102943!important;color:#f5dfa9!important;padding:10px 8px;font-size:9px}
   .print-sheet td{padding:9px 8px;border-bottom:1px solid #e3e8ed;font-size:9px;color:#243b52}
   .print-stamp{
-    display:inline-block;margin-top:28px;padding:10px 15px;
-    border:2px solid #b88a3d;border-radius:8px;color:#9b742f;
-    font-size:10px;font-weight:900;letter-spacing:1.2px;
+    display:grid;place-items:center;text-align:center;
+    width:126px;height:126px;margin-top:28px;padding:17px;
+    border:2px solid #b88a3d;border-radius:50%;color:#9b742f;
+    font-size:10px;font-weight:900;letter-spacing:1.1px;line-height:1.7;
+    outline:1px solid #d9bd80;outline-offset:-7px;
   }
+  .print-subheading{margin:22px 0 9px;color:#102943;font-size:13px}
   .print-sheet footer{
     display:block;margin-top:34px;padding:12px 0 0;border-top:1px solid #dfe5ea;
     color:#7b8b9b;font-size:9px;text-align:center;letter-spacing:2px;
