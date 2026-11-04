@@ -1,12 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#07172c"/><stop offset="1" stop-color="#173b5b"/></linearGradient><linearGradient id="gold" x2="1" y2="1"><stop stop-color="#fff0bd"/><stop offset=".55" stop-color="#d4a84f"/><stop offset="1" stop-color="#9c6820"/></linearGradient></defs>
-<rect width="512" height="512" rx="110" fill="url(#bg)"/><rect x="16" y="16" width="480" height="480" rx="98" fill="none" stroke="url(#gold)" stroke-width="12"/>
-<circle cx="256" cy="220" r="151" fill="none" stroke="#d8e5ef" stroke-opacity=".16" stroke-width="2"/>
-<path d="M318 106c-29-21-61-31-98-31-82 0-148 65-148 145s66 145 148 145c35 0 66-11 93-31" fill="none" stroke="url(#gold)" stroke-width="31" stroke-linecap="round"/>
-<path d="M271 145l22 54 54 22-54 22-22 54-22-54-54-22 54-22z" fill="url(#gold)"/>
-<path d="M98 332h316l-22 20H120z" fill="#e9f1f7" opacity=".9"/>
-<path d="M150 329l21-45h170l26 45M192 284v-35h105v35M215 249v-22h62v22" fill="none" stroke="#d4a84f" stroke-width="10" stroke-linejoin="round"/>
-<path d="M104 373h304" stroke="#d4a84f" stroke-width="7" stroke-linecap="round"/>
-<text x="256" y="425" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="37" font-weight="700" letter-spacing="4">CODELFA</text>
-<text x="256" y="465" text-anchor="middle" fill="#e8c36f" font-family="Arial,sans-serif" font-size="23" font-weight="700" letter-spacing="8">PARTNERS</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="CODELFA Partners company seal">
+  <defs>
+    <linearGradient id="navy" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07172c"/><stop offset="1" stop-color="#173b5b"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f4dfad"/><stop offset=".52" stop-color="#c99a48"/><stop offset="1" stop-color="#8f6428"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#navy)"/>
+  <circle cx="256" cy="256" r="208" fill="none" stroke="url(#gold)" stroke-width="13"/>
+  <circle cx="256" cy="256" r="185" fill="none" stroke="#f1d99f" stroke-opacity=".72" stroke-width="3"/>
+  <circle cx="256" cy="256" r="137" fill="#ffffff06" stroke="url(#gold)" stroke-width="5"/>
+  <path d="M320 169c-19-17-42-25-69-25-62 0-112 50-112 112s50 112 112 112c27 0 50-9 69-25" fill="none" stroke="url(#gold)" stroke-width="26" stroke-linecap="round"/>
+  <path d="M270 187l22 48 48 21-48 22-22 48-22-48-48-22 48-21z" fill="url(#gold)"/>
+  <circle cx="256" cy="256" r="8" fill="#f7e8c3"/>
+  <path d="M115 112l12 12m258 264 12 12M397 112l-12 12M115 400l12-12" stroke="#f1d99f" stroke-width="5" stroke-linecap="round" opacity=".8"/>
+  <text x="256" y="438" text-anchor="middle" fill="#f6e6c2" font-family="Arial,sans-serif" font-size="34" font-weight="800" letter-spacing="5">CODELFA</text>
+  <text x="256" y="472" text-anchor="middle" fill="#d9b66f" font-family="Arial,sans-serif" font-size="19" font-weight="700" letter-spacing="7">PARTNERS</text>
 </svg>
