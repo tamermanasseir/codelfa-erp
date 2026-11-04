@@ -520,8 +520,9 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
   if (path === "/api/shipment-loading-photos" && request.method === "GET") {
     const shipmentId=text(url.searchParams.get("shipmentId"),80);
-    if(!shipmentId) return fail("A shipment is required.");
-    const result=await env.DB.prepare("SELECT id,shipment_id,file_name,content_type,byte_size,photo_date,caption,uploaded_by,created_at FROM shipment_loading_photos WHERE shipment_id=? ORDER BY photo_date DESC,created_at DESC").bind(shipmentId).all();
+    const result=shipmentId
+      ? await env.DB.prepare("SELECT id,shipment_id,file_name,content_type,byte_size,photo_date,caption,uploaded_by,created_at FROM shipment_loading_photos WHERE shipment_id=? ORDER BY photo_date DESC,created_at DESC").bind(shipmentId).all()
+      : await env.DB.prepare("SELECT id,shipment_id,file_name,content_type,byte_size,photo_date,caption,uploaded_by,created_at FROM shipment_loading_photos ORDER BY photo_date DESC,created_at DESC LIMIT 1000").all();
     return json({photos:result.results});
   }
   if (path === "/api/shipment-loading-photos" && request.method === "POST") {
