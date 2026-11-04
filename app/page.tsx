@@ -467,13 +467,19 @@ export default function Home(){
     <div className="content"><div className="welcome-row"><div><div className="eyebrow">PRIVATE PARTNERSHIP WORKSPACE</div><h1>{section==="overview"?"أهلاً، "+user.displayName:title}</h1><p>متابعة العمل التجاري والشحنات والحسابات من مكان واحد.</p></div><div className="date-pill">{new Date().toLocaleDateString(isAr?"ar":"en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div></div>
       {notice&&<div className="preview-notice"><span>✓</span>{notice}<button onClick={()=>setNotice("")}>×</button></div>}{error&&<div className="error-banner">{error}<button onClick={()=>setError("")}>×</button></div>}
       {section==="overview"&&<><div className="hero-card"><div className="hero-copy"><div className="hero-kicker">CODELFA · BUSINESS PARTNERSHIP</div><h2>كل تفاصيل العمل،<br/><em>في مكان واحد.</em></h2><p>بيانات مشتركة، صلاحيات واضحة، ومتابعة منظمة من الشراء حتى التسليم.</p><button onClick={()=>setSection("shipments")} className="gold-button">استعراض الشحنات ←</button></div><div className="hero-art"><img src="/apple-touch-icon.png" alt="CODELFA PARTNERS" /></div></div>
-        <div className="workflow-grid">
-          <button onClick={()=>setSection("orders")}><span>00</span><b>الأوردرات</b><small>ملف متكامل لكل طلب تجاري</small></button>
-          <button onClick={()=>setSection("shipments")}><span>01</span><b>الشحنات</b><small>الحاويات والمراحل والمواعيد</small></button>
-          <button onClick={()=>setSection("purchases")}><span>02</span><b>المشتريات</b><small>فواتير الموردين وتكلفة البضاعة</small></button>
-          <button onClick={()=>setSection("sales")}><span>03</span><b>المبيعات</b><small>فواتير العملاء وقيمة البيع</small></button>
-          <button onClick={()=>setSection("china")}><span>04</span><b>دفعات الصين</b><small>الحوالات وتوزيعها على الفواتير</small></button>
-        </div>
+        <section className="dashboard-kpis">
+          <div className="dashboard-kpis-heading"><div><span className="eyebrow">BUSINESS SNAPSHOT</span><h2>مؤشرات العمل</h2><p>ملخص سريع للأرصدة والأوردرات وحركة الحاويات</p></div><button className="text-link" onClick={()=>void loadData()}>{labels.refresh} ↻</button></div>
+          <div className="dashboard-kpi-grid">
+            <button className="dashboard-kpi-card kpi-gold" onClick={()=>setSection("china")}><span className="dashboard-kpi-icon">¥</span><small>المتبقي للصين</small><strong>{currencies.filter(c=>invoices.some(i=>i.invoice_type==="purchase"&&i.currency===c&&i.status!=="cancelled")).map(c=>{const due=invoices.filter(i=>i.invoice_type==="purchase"&&i.currency===c&&i.status!=="cancelled").reduce((n,i)=>n+Math.max(i.total_minor-(i.paid_minor||0),0),0);return due>0?money(due,c):null;}).filter(Boolean).join(" · ")||"لا يوجد متبقي"}</strong><em>حسب فواتير الشراء</em></button>
+            <button className="dashboard-kpi-card" onClick={()=>setSection("china")}><span className="dashboard-kpi-icon">↗</span><small>حوالات الصين</small><strong>{chinaTotals.length?chinaTotals.map(x=>money(x.transferred,x.currency)).join(" · "):"—"}</strong><em>{chinaRemittances.length} حوالة مسجلة</em></button>
+            <button className="dashboard-kpi-card" onClick={()=>setSection("shipments")}><span className="dashboard-kpi-icon">▤</span><small>إجمالي الشحنات</small><strong>{shipments.length}</strong><em>حاوية مسجلة</em></button>
+            <button className="dashboard-kpi-card kpi-blue" onClick={()=>setSection("shipments")}><span className="dashboard-kpi-icon">⇢</span><small>الشحنات بالطريق</small><strong>{shipments.filter(s=>["booked","loaded","departed","in_transit"].includes(s.status)).length}</strong><em>محجوزة أو غادرت أو قيد النقل</em></button>
+            <button className="dashboard-kpi-card kpi-green" onClick={()=>setSection("shipments")}><span className="dashboard-kpi-icon">✓</span><small>وصلت / تم استلامها</small><strong>{shipments.filter(s=>["arrived","customs_clearance","released","received","closed"].includes(s.status)).length}</strong><em>في الميناء أو المستودع</em></button>
+            <button className="dashboard-kpi-card" onClick={()=>setSection("orders")}><span className="dashboard-kpi-icon">▦</span><small>الأوردرات النشطة</small><strong>{orders.filter(o=>!["completed","cancelled"].includes(o.status)).length}</strong><em>مفتوحة أو قيد التنفيذ</em></button>
+            <button className="dashboard-kpi-card" onClick={()=>setSection("purchases")}><span className="dashboard-kpi-icon">↓</span><small>فواتير شراء غير مسددة</small><strong>{invoices.filter(i=>i.invoice_type==="purchase"&&i.status!=="cancelled"&&(i.paid_minor||0)<i.total_minor).length}</strong><em>تحتاج متابعة السداد</em></button>
+            <button className="dashboard-kpi-card" onClick={()=>setSection("sales")}><span className="dashboard-kpi-icon">↑</span><small>فواتير المبيعات</small><strong>{invoices.filter(i=>i.invoice_type==="sale"&&i.status!=="cancelled").length}</strong><em>إجمالي الفواتير المسجلة</em></button>
+          </div>
+        </section>
         <section className="shipment-home-section">
           <div className="shipment-home-heading">
             <div><span className="eyebrow">CONTAINER PHOTO LOG</span><h2>صور الحاويات</h2><p>كل صورة مرتبطة برقم الحاوية والأوردر والعميل لتعرف مصدرها مباشرة.</p></div>
