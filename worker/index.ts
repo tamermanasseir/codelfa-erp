@@ -114,7 +114,27 @@ async function handle(request: Request, env: Env): Promise<Response> {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "allow": "GET, POST, OPTIONS" } });
   if (url.pathname === "/api/health" && request.method === "GET") {
     const row = await env.DB.prepare("SELECT COUNT(*) AS count FROM users").first<{ count: number }>();
-    return json({ ok: true, database: "connected", initialized: (row?.count || 0) > 0 });
+    let usersSchemaOk = false;
+    let auditSchemaOk = false;
+    try {
+      await env.DB.prepare("SELECT id, username, display_name, password_hash, role, is_active FROM users LIMIT 0").all();
+      usersSchemaOk = true;
+    } catch (error) {
+      console.error("CODELFA health users schema check failed", error);
+    }
+    try {
+      await env.DB.prepare("SELECT id, actor_user_id, action, entity_type, entity_id, details_json FROM audit_log LIMIT 0").all();
+      auditSchemaOk = true;
+    } catch (error) {
+      console.error("CODELFA health audit schema check failed", error);
+    }
+    return json({
+      ok: true,
+      database: "connected",
+      initialized: (row?.count || 0) > 0,
+      setupReady: Boolean(env.BOOTSTRAP_SECRET) && usersSchemaOk,
+      diagnostics: { bootstrapConfigured: Boolean(env.BOOTSTRAP_SECRET), usersSchemaOk, auditSchemaOk }
+    });
   }
 
   if (url.pathname === "/api/setup" && request.method === "POST") {
@@ -130,10 +150,27 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return fail("Use a 3–40 character username, a display name, and a password of at least 12 characters.");
     }
     const id = randomId();
-    const passwordHash = await hashPassword(password);
-    await env.DB.prepare("INSERT INTO users (id, username, display_name, password_hash, role) VALUES (?, ?, ?, ?, 'owner')")
-      .bind(id, username, displayName, passwordHash).run();
-    await audit(env, id, "initial_owner_created", "user", id);
+    let passwordHash: string;
+    try {
+      passwordHash = await hashPassword(password);
+    } catch (error) {
+      console.error("CODELFA owner setup failed at password hashing", error);
+      return fail("تعذر تجهيز كلمة المرور على الخادم. لم يتم إنشاء الحساب.", 500);
+    }
+    try {
+      await env.DB.prepare("INSERT INTO users (id, username, display_name, password_hash, role) VALUES (?, ?, ?, ?, 'owner')")
+        .bind(id, username, displayName, passwordHash).run();
+    } catch (error) {
+      console.error("CODELFA owner setup failed while inserting user", error);
+      return fail("تعذر حفظ حساب المدير في قاعدة البيانات. لم يتم تأكيد إنشاء الحساب.", 500);
+    }
+    try {
+      await audit(env, id, "initial_owner_created", "user", id);
+    } catch (error) {
+      // Account creation is the critical operation; an audit-only failure must not
+      // make the user retry and create an ambiguous setup state.
+      console.error("CODELFA owner setup audit write failed after account creation", error);
+    }
     return json({ ok: true, message: "Owner account created. Sign in to continue." }, 201);
   }
 
