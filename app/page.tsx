@@ -24,7 +24,7 @@ type Invoice = {
 };
 type Remittance = {id:string;entry_date:string;amount_minor:number;currency:string;reference_no:string|null;description:string|null;notes:string|null;payment_method:string|null;status:string;allocated_minor:number};
 type RemittanceAllocation = {id:string;invoice_id:string;financial_entry_id:string;amount_minor:number;currency:string;entry_date:string;invoice_no:string;supplier_name:string|null;container_no:string|null};
-type InvoiceLine = {id:string;invoice_id:string;description:string;quantity:number;unit:string;unit_price_minor:number;line_total_minor:number;notes:string|null};
+type InvoiceLine = {id:string;invoice_id:string;description:string;quantity:number;unit:string;unit_area_m2:number;pricing_basis:"unit"|"sqm";unit_price_minor:number;line_total_minor:number;notes:string|null};
 type PurchaseExtra = {id:string;invoice_id:string;category:string;description:string;amount_minor:number;currency:string;expense_date:string;notes:string|null;shipment_id:string|null;invoice_no:string};
 type PurchaseExtraForm = {category:string;description:string;amount:string;currency:string;expenseDate:string;notes:string};
 type ShipmentPhoto = {id:string;shipment_id:string;file_name:string;content_type:string;byte_size:number;photo_date:string;caption:string|null;uploaded_by:string;created_at:string};
@@ -32,7 +32,7 @@ type Budget = {id:string;shipment_id:string;budget_type:"sale"|"purchase"|"expen
 type DocumentItem = {id:string;target_type:string;target_id:string;file_name:string;content_type:string;byte_size:number;created_at:string};
 type Comment = {id:string;body:string;author:string;created_at:string;target_type:string;target_id:string|null};
 type Section = "overview"|"shipments"|"purchases"|"sales"|"invoices"|"china"|"finance"|"parties"|"statements"|"reports"|"notes"|"team";
-type InvoiceLineForm = {description:string;quantity:string;unit:string;unitPrice:string};
+type InvoiceLineForm = {description:string;quantity:string;unit:string;unitArea:string;pricingBasis:"unit"|"sqm";unitPrice:string};
 const currencies=["USD","CNY","ILS","TRY"];
 const shipmentStatuses=[
   ["purchased","تم الشراء"],["ordered","تم تأكيد الطلب"],["booked","تم حجز الشحن البحري"],
@@ -51,7 +51,7 @@ async function api<T>(path:string,options:RequestInit={}):Promise<T>{
 }
 const blankShipment=()=>({containerNo:"",referenceNo:"",supplierName:"",origin:"Qingdao",destination:"Ashdod",status:"purchased",purchaseDate:"",etd:"",eta:"",billOfLadingNo:"",notes:""});
 const blankEntry=()=>({entryType:"payment",amount:"",currency:"USD",direction:"out",entryDate:new Date().toISOString().slice(0,10),dueDate:"",description:"",referenceNo:"",status:"recorded",counterpartyId:"",shipmentId:"",paymentMethod:"bank_transfer",chequeNo:"",bankName:"",paidAt:"",notes:""});
-const blankInvoice=()=>({invoiceNo:"",invoiceType:"sale",counterpartyId:"",shipmentId:"",invoiceDate:new Date().toISOString().slice(0,10),dueDate:"",currency:"USD",discount:"0",tax:"0",status:"issued",notes:"",lines:[{description:"",quantity:"1",unit:"pcs",unitPrice:""}] as InvoiceLineForm[],purchaseExtras:[] as PurchaseExtraForm[]});
+const blankInvoice=()=>({invoiceNo:"",invoiceType:"sale",counterpartyId:"",shipmentId:"",invoiceDate:new Date().toISOString().slice(0,10),dueDate:"",currency:"USD",discount:"0",tax:"0",status:"issued",notes:"",lines:[{description:"",quantity:"1",unit:"pcs",unitArea:"1",pricingBasis:"sqm",unitPrice:""}] as InvoiceLineForm[],purchaseExtras:[] as PurchaseExtraForm[]});
 const purchaseExtraCategories=[["freight","أجور الشحن"],["customs","جمارك وتخليص"],["handling","مناولة وتحميل"],["cutting","قص وتجهيز"],["unloading","تنزيل"],["insurance","تأمين"],["other","إضافات أخرى"]];
 const blankPurchaseExtra=(currency="USD"):PurchaseExtraForm=>({category:"freight",description:"",amount:"",currency,expenseDate:new Date().toISOString().slice(0,10),notes:""});
 const blankChinaPayment=()=>({amount:"",currency:"USD",entryDate:new Date().toISOString().slice(0,10),referenceNo:"",notes:"",allocations:[{invoiceId:"",amount:""}]});
@@ -223,7 +223,7 @@ export default function Home(){
       invoiceNo:i.invoice_no,invoiceType:i.invoice_type,counterpartyId:i.counterparty_id||"",shipmentId:i.shipment_id||"",
       invoiceDate:i.invoice_date,dueDate:i.due_date||"",currency:i.currency,discount:String(i.discount_minor/100),
       tax:String(i.tax_minor/100),status:i.status,notes:i.notes||"",
-      lines:lines.length?lines.map(l=>({description:l.description,quantity:String(l.quantity),unit:l.unit,unitPrice:String(l.unit_price_minor/100)})):[{description:"",quantity:"1",unit:"pcs",unitPrice:""}],
+      lines:lines.length?lines.map(l=>({description:l.description,quantity:String(l.quantity),unit:l.unit,unitArea:String(l.unit_area_m2||1),pricingBasis:l.pricing_basis||"unit",unitPrice:String(l.unit_price_minor/100)})):[{description:"",quantity:"1",unit:"pcs",unitArea:"1",pricingBasis:"sqm",unitPrice:""}],
       purchaseExtras:purchaseExtras.filter(x=>x.invoice_id===i.id).map(x=>({category:x.category,description:x.description,amount:String(x.amount_minor/100),currency:x.currency,expenseDate:x.expense_date,notes:x.notes||""}))
     });
     setModal("invoice");
@@ -231,7 +231,7 @@ export default function Home(){
   async function saveInvoice(e:FormEvent){
     e.preventDefault();setError("");
     try{
-      const payload={...invoiceForm,discount:Number(invoiceForm.discount||0),tax:Number(invoiceForm.tax||0),lines:invoiceForm.lines.map(l=>({...l,quantity:Number(l.quantity),unitPrice:Number(l.unitPrice)})),purchaseExtras:invoiceForm.invoiceType==="purchase"?invoiceForm.purchaseExtras.filter(x=>x.description.trim()&&Number(x.amount)>0).map(x=>({...x,amount:Number(x.amount)})):[]};
+      const payload={...invoiceForm,discount:Number(invoiceForm.discount||0),tax:Number(invoiceForm.tax||0),lines:invoiceForm.lines.map(l=>({...l,quantity:Number(l.quantity),unitArea:Number(l.unitArea),unitPrice:Number(l.unitPrice)})),purchaseExtras:invoiceForm.invoiceType==="purchase"?invoiceForm.purchaseExtras.filter(x=>x.description.trim()&&Number(x.amount)>0).map(x=>({...x,amount:Number(x.amount)})):[]};
       const saved=await api<{ok:boolean;id?:string}>(editingId?"/api/invoices/"+editingId:"/api/invoices",{method:editingId?"PATCH":"POST",body:JSON.stringify(payload)});
       const invoiceId=editingId||saved.id;
       if(!invoiceId)throw new Error("تم حفظ الفاتورة لكن تعذر تحديد رقمها لربط المرفقات.");
