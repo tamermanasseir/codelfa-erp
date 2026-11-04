@@ -346,13 +346,15 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const requiredPartyType=type==="purchase"?"supplier":"customer";
     const party=partyId?await env.DB.prepare("SELECT id FROM counterparties WHERE id=? AND counterparty_type=? AND archived_at IS NULL").bind(partyId,requiredPartyType).first<{id:string}>():null;
     if(!party) return fail(type==="purchase"?"Select an active supplier for this purchase invoice.":"Select an active customer for this sales invoice.");
-    const prepared: {id:string;description:string;quantity:number;unit:string;price:number;total:number;notes:string|null}[]=[];
+    const prepared: {id:string;description:string;quantity:number;unit:string;unitArea:number;pricingBasis:"unit"|"sqm";price:number;total:number;notes:string|null}[]=[];
     for (const line of lines) {
       const description=text(line.description,240);
       const quantity=Number(line.quantity);
+      const unitArea=Number(line.unitArea ?? 1);
+      const pricingBasis=text(line.pricingBasis,10)==="sqm"?"sqm":"unit";
       const price=minor(line.unitPrice);
-      if (!description || !Number.isFinite(quantity) || quantity<=0 || quantity>100000000 || price===null) return fail("Check every invoice line, quantity and price.");
-      prepared.push({id:randomId(),description,quantity,unit:text(line.unit,30)||"pcs",price,total:Math.round(quantity*price),notes:text(line.notes,500)||null});
+      if (!description || !Number.isFinite(quantity) || quantity<=0 || quantity>100000000 || !Number.isFinite(unitArea) || unitArea<=0 || unitArea>1000000 || price===null) return fail("Check every invoice line, quantity, unit area and price.");
+      prepared.push({id:randomId(),description,quantity,unit:text(line.unit,30)||"pcs",unitArea,pricingBasis,price,total:Math.round(quantity*price*(pricingBasis==="sqm"?unitArea:1)),notes:text(line.notes,500)||null});
     }
     const subtotal=prepared.reduce((n,l)=>n+l.total,0);
     const discount=minor(data?.discount)||0;
@@ -366,7 +368,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       env.DB.prepare("INSERT INTO invoices (id,invoice_no,invoice_type,counterparty_id,shipment_id,invoice_date,due_date,currency,subtotal_minor,discount_minor,tax_minor,total_minor,status,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
         .bind(id,invoiceNo,type,partyId,text(data?.shipmentId,80)||null,date,validDate(data?.dueDate)||null,curr,subtotal,discount,tax,total,text(data?.status,20)||"issued",text(data?.notes,3000)||null,user.id)
     ];
-    for (const line of prepared) statements.push(env.DB.prepare("INSERT INTO invoice_lines (id,invoice_id,description,quantity,unit,unit_price_minor,line_total_minor,notes) VALUES (?,?,?,?,?,?,?,?)").bind(line.id,id,line.description,line.quantity,line.unit,line.price,line.total,line.notes));
+    for (const line of prepared) statements.push(env.DB.prepare("INSERT INTO invoice_lines (id,invoice_id,description,quantity,unit,unit_area_m2,pricing_basis,unit_price_minor,line_total_minor,notes) VALUES (?,?,?,?,?,?,?,?,?,?)").bind(line.id,id,line.description,line.quantity,line.unit,line.unitArea,line.pricingBasis,line.price,line.total,line.notes));
     for (const extra of extraResult.extras) statements.push(env.DB.prepare("INSERT INTO purchase_invoice_extras (id,invoice_id,category,description,amount_minor,currency,expense_date,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?)")
       .bind(extra.id,id,extra.category,extra.description,extra.amount,extra.currency,extra.expenseDate,extra.notes,user.id));
     statements.push(env.DB.prepare("INSERT INTO audit_log (id,actor_user_id,action,entity_type,entity_id,details_json) VALUES (?,?,?,?,?,?)").bind(randomId(),user.id,"create","invoice",id,JSON.stringify({invoiceNo,type,total,currency:curr})));
@@ -386,11 +388,12 @@ async function handle(request: Request, env: Env): Promise<Response> {
     const requiredPartyType=type==="purchase"?"supplier":"customer";
     const party=partyId?await env.DB.prepare("SELECT id FROM counterparties WHERE id=? AND counterparty_type=? AND archived_at IS NULL").bind(partyId,requiredPartyType).first<{id:string}>():null;
     if(!party) return fail(type==="purchase"?"Select an active supplier for this purchase invoice.":"Select an active customer for this sales invoice.");
-    const prepared:{id:string;description:string;quantity:number;unit:string;price:number;total:number;notes:string|null}[]=[];
+    const prepared:{id:string;description:string;quantity:number;unit:string;unitArea:number;pricingBasis:"unit"|"sqm";price:number;total:number;notes:string|null}[]=[];
     for(const line of lines){
-      const description=text(line.description,240),quantity=Number(line.quantity),price=minor(line.unitPrice);
-      if(!description || !Number.isFinite(quantity) || quantity<=0 || quantity>100000000 || price===null) return fail("Check every invoice line, quantity and price.");
-      prepared.push({id:randomId(),description,quantity,unit:text(line.unit,30)||"pcs",price,total:Math.round(quantity*price),notes:text(line.notes,500)||null});
+      const description=text(line.description,240),quantity=Number(line.quantity),unitArea=Number(line.unitArea ?? 1);
+      const pricingBasis=text(line.pricingBasis,10)==="sqm"?"sqm":"unit",price=minor(line.unitPrice);
+      if(!description || !Number.isFinite(quantity) || quantity<=0 || quantity>100000000 || !Number.isFinite(unitArea) || unitArea<=0 || unitArea>1000000 || price===null) return fail("Check every invoice line, quantity, unit area and price.");
+      prepared.push({id:randomId(),description,quantity,unit:text(line.unit,30)||"pcs",unitArea,pricingBasis,price,total:Math.round(quantity*price*(pricingBasis==="sqm"?unitArea:1)),notes:text(line.notes,500)||null});
     }
     const subtotal=prepared.reduce((n,l)=>n+l.total,0),discount=minor(data?.discount)||0,tax=minor(data?.tax)||0,total=subtotal-discount+tax;
     if(discount>subtotal || total<0) return fail("Discount cannot exceed the invoice subtotal.");
@@ -407,7 +410,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       env.DB.prepare("DELETE FROM invoice_lines WHERE invoice_id=?").bind(invoiceMatch[1]),
       env.DB.prepare("DELETE FROM purchase_invoice_extras WHERE invoice_id=?").bind(invoiceMatch[1])
     ];
-    for(const line of prepared) statements.push(env.DB.prepare("INSERT INTO invoice_lines (id,invoice_id,description,quantity,unit,unit_price_minor,line_total_minor,notes) VALUES (?,?,?,?,?,?,?,?)").bind(line.id,invoiceMatch[1],line.description,line.quantity,line.unit,line.price,line.total,line.notes));
+    for(const line of prepared) statements.push(env.DB.prepare("INSERT INTO invoice_lines (id,invoice_id,description,quantity,unit,unit_area_m2,pricing_basis,unit_price_minor,line_total_minor,notes) VALUES (?,?,?,?,?,?,?,?,?,?)").bind(line.id,invoiceMatch[1],line.description,line.quantity,line.unit,line.unitArea,line.pricingBasis,line.price,line.total,line.notes));
     for(const extra of extraResult.extras) statements.push(env.DB.prepare("INSERT INTO purchase_invoice_extras (id,invoice_id,category,description,amount_minor,currency,expense_date,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?)")
       .bind(extra.id,invoiceMatch[1],extra.category,extra.description,extra.amount,extra.currency,extra.expenseDate,extra.notes,user.id));
     statements.push(env.DB.prepare("INSERT INTO audit_log (id,actor_user_id,action,entity_type,entity_id,details_json) VALUES (?,?,?,?,?,?)").bind(randomId(),user.id,"update","invoice",invoiceMatch[1],JSON.stringify({invoiceNo,total,currency:curr})));
