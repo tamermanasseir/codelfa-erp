@@ -14,3 +14,10 @@ binding = "DB"
 database_name = "codelfa-partners-db"
 database_id = "6a863aef-dc83-4941-9dac-8ed93be6193a"
 migrations_dir = "migrations"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+invocation_logs = true
