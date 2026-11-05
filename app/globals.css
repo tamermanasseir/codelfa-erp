@@ -981,6 +981,34 @@ body{background:linear-gradient(135deg,#eef2f6 0%,#f5f3ee 52%,#eaf0f4 100%)}
   border-color:#d2e9dc;
 }
 .dashboard-kpi-card.kpi-green strong{color:#24765c}
+.currency-card-modern{display:block;padding:17px;border-radius:18px;background:linear-gradient(160deg,#fff 0%,#fbfcfe 100%);box-shadow:0 8px 24px #17334f0a;min-width:0}
+.currency-title-modern{display:flex;align-items:center;padding:0 0 13px;margin-bottom:14px}
+.currency-title-modern>div{display:flex;align-items:center;gap:10px}
+.currency-title-modern .currency-code{font-size:17px;font-weight:900;letter-spacing:.4px;color:#18334e}
+.currency-title-modern small{font-size:10px;color:#8795a5;font-weight:600}
+.currency-title-modern .currency-tag{font-size:9px;color:#8b744c;background:#f8f3e9;border:1px solid #eee3cf;border-radius:20px;padding:5px 9px}
+.currency-profit-hero{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 16px;margin-bottom:14px;border:1px solid #d7eadf;border-radius:13px;background:linear-gradient(120deg,#eff9f3 0%,#f8fcf9 100%)}
+.currency-profit-hero small{display:block;color:#398064;font-size:10px;font-weight:700;margin-bottom:6px}
+.currency-profit-hero strong{display:block;color:#176b50;font-size:clamp(18px,2vw,23px);font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:-.4px}
+.currency-profit-mark{display:grid;place-items:center;flex:0 0 34px;height:34px;border-radius:11px;background:#dcefe4;color:#247a59;font-size:18px;font-weight:900}
+.currency-breakdown-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.currency-metric{min-width:0;padding:11px 12px;border:1px solid #edf0f4;border-radius:11px;background:#fff}
+.currency-metric small{margin-bottom:6px;font-size:10px}
+.currency-metric b{display:block;font-size:12px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.currency-card .metric-sales{background:#f5f9fd;border-color:#e2edf6}
+.currency-card .metric-cost{background:#fff8f7;border-color:#f3e7e4}
+.currency-cashflow{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px;padding-top:12px;border-top:1px solid #edf0f4}
+.currency-cashflow>div{display:flex;flex-direction:column;gap:5px;min-width:0}
+.currency-cashflow span{font-size:9px;color:#8795a5}
+.currency-cashflow b{font-size:11px;color:#40566d;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.currency-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,265px),1fr));gap:15px}
+@media(max-width:520px){
+  .currency-card-modern{padding:14px}
+  .currency-profit-hero{padding:13px}
+  .currency-profit-hero strong{font-size:20px}
+  .currency-metric{padding:10px}
+  .currency-cashflow{gap:7px}
+}
 .currency-card .metric-sales small,.currency-card .metric-sales b{color:#356b91}
 .currency-card .metric-cost small,.currency-card .metric-cost b{color:#a6534d}
 .currency-card .metric-profit{
