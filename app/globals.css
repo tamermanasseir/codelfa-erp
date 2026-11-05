@@ -950,3 +950,47 @@ body{background:linear-gradient(135deg,#eef2f6 0%,#f5f3ee 52%,#eaf0f4 100%)}
   .comment-fields{grid-template-columns:1fr}
   .party-actions{gap:13px}
 }
+
+
+/* Semantic dashboard palette — restrained CODELFA colors */
+.dashboard-kpi-card.kpi-teal{
+  background:linear-gradient(145deg,#f4fbfa 0%,#eaf6f4 100%);
+  border-color:#cfe7e3;
+}
+.dashboard-kpi-card.kpi-teal .dashboard-kpi-icon{background:#dcefeb;color:#19766f}
+.dashboard-kpi-card.kpi-teal strong{color:#176e68}
+.dashboard-kpi-card.kpi-purple{
+  background:linear-gradient(145deg,#faf8fd 0%,#f1edf8 100%);
+  border-color:#e1d8ee;
+}
+.dashboard-kpi-card.kpi-purple .dashboard-kpi-icon{background:#e9e1f2;color:#70558f}
+.dashboard-kpi-card.kpi-purple strong{color:#624a82}
+.dashboard-kpi-card.kpi-red{
+  background:linear-gradient(145deg,#fff9f8 0%,#f9eeed 100%);
+  border-color:#efd8d5;
+}
+.dashboard-kpi-card.kpi-red .dashboard-kpi-icon{background:#f5e2df;color:#a64d48}
+.dashboard-kpi-card.kpi-red strong{color:#9e4541}
+.dashboard-kpi-card.kpi-blue{
+  background:linear-gradient(145deg,#f7fbff 0%,#edf4fa 100%);
+  border-color:#d7e5f0;
+}
+.dashboard-kpi-card.kpi-blue strong{color:#356b91}
+.dashboard-kpi-card.kpi-green{
+  background:linear-gradient(145deg,#f6fcf9 0%,#eaf6f0 100%);
+  border-color:#d2e9dc;
+}
+.dashboard-kpi-card.kpi-green strong{color:#24765c}
+.currency-card .metric-sales small,.currency-card .metric-sales b{color:#356b91}
+.currency-card .metric-cost small,.currency-card .metric-cost b{color:#a6534d}
+.currency-card .metric-profit{
+  border-top-color:#cfe7db;
+  background:linear-gradient(90deg,#f1faf5,#f8fcf9);
+  border-radius:9px;
+  padding:11px 10px 8px;
+  margin-inline:-4px;
+}
+.currency-card .metric-profit small,.currency-card .metric-profit b{color:#19765b;font-weight:900}
+@media(max-width:520px){
+  .currency-card .metric-profit{margin-inline:-2px;padding-inline:8px}
+}
