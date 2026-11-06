@@ -871,6 +871,7 @@ body{background:linear-gradient(135deg,#eef2f6 0%,#f5f3ee 52%,#eaf0f4 100%)}
 
 
 /* Printable CODELFA statements: isolated A4 output with a branded electronic mark */
+.report-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.report-filters label{display:grid;gap:7px;color:#52677c;font-size:12px;font-weight:700}.report-filters input,.report-filters select{width:100%;min-width:0;border:1px solid #dce3e9;border-radius:10px;padding:11px;background:#fff;color:#18334e;font:inherit}.report-scope-note{margin:13px 0 0;color:#738397;font-size:11px;line-height:1.7}.report-print-sheet h3{break-after:avoid}.report-print-sheet table{margin-bottom:12px}.report-print-sheet tr{break-inside:avoid}@media(max-width:700px){.report-filters{grid-template-columns:1fr}}
 .print-sheet{display:none}
 @media print{
   @page{size:A4;margin:14mm}
