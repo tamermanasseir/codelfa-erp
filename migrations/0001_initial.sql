@@ -1,5 +1,6 @@
 -- CODELFA PARTNERS — isolated Cloudflare D1 schema
--- Apply only to database: codelfa-partners-db
+-- Apply only through the Wrangler configuration that explicitly selects the target D1 database.
+-- For branch previews, use wrangler.preview-migrations.toml (codelfa-partners-preview), never production.
 -- No demo/business records or credentials are seeded.
 
 PRAGMA foreign_keys = ON;
