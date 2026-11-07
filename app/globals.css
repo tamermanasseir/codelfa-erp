@@ -1105,3 +1105,49 @@ body{background:linear-gradient(135deg,#eef2f6 0%,#f5f3ee 52%,#eaf0f4 100%)}
   .stat-card strong{font-size:27px;margin:12px 0 5px}
   .stat-card small{font-size:10px}
 }
+
+
+/* CODELFA PARTNERS — colorful navigation and more readable dashboard */
+.nav-item{font-size:15px;min-height:48px;gap:13px}
+.nav-icon{width:29px;flex:0 0 29px;font-size:21px;line-height:1.2;color:inherit;filter:saturate(1.12)}
+.nav-item.active .nav-icon{filter:drop-shadow(0 2px 5px #d4a84f35)}
+.mobile-nav button{font-size:13px}
+.dashboard-kpis-heading h2{font-size:24px}
+.dashboard-kpis-heading p{font-size:13px;line-height:1.65}
+.dashboard-kpi-card{min-height:166px;padding:22px}
+.dashboard-kpi-icon{width:44px;height:44px;font-size:23px;background:#f1f4f7}
+.dashboard-kpi-card small{font-size:14px;line-height:1.5}
+.dashboard-kpi-card strong{font-size:clamp(23px,2.2vw,31px);line-height:1.4}
+.dashboard-kpi-card.kpi-gold strong{font-size:clamp(18px,1.8vw,24px)}
+.dashboard-kpi-card em{font-size:12px;line-height:1.6}
+.stats-grid .stat-card{min-height:150px;padding:20px}
+.stats-grid .stat-top{font-size:14px;line-height:1.5}
+.stats-grid .stat-top i{font-size:21px;font-style:normal}
+.stats-grid .stat-card strong{font-size:35px;line-height:1.2}
+.stats-grid .stat-card small{font-size:12px;line-height:1.6}
+.section-heading h2,.panel-head h3{font-size:18px}
+.section-heading p,.panel-head p{font-size:12px;line-height:1.6}
+.currency-title-modern .currency-code{font-size:19px}
+.currency-profit-hero strong{font-size:clamp(21px,2.2vw,27px)}
+.currency-metric small{font-size:11px}
+.currency-metric b{font-size:14px}
+@media(max-width:850px){
+  .nav-item{font-size:14px}
+  .dashboard-kpis-heading h2{font-size:21px}
+  .dashboard-kpi-card{min-height:150px;padding:18px}
+  .dashboard-kpi-card small{font-size:12px}
+  .dashboard-kpi-card strong{font-size:23px}
+  .stats-grid .stat-card strong{font-size:30px}
+}
+@media(max-width:520px){
+  .dashboard-kpi-icon{width:35px;height:35px;font-size:19px}
+  .dashboard-kpi-card{min-height:140px;padding:15px 13px}
+  .dashboard-kpi-card small{font-size:11px}
+  .dashboard-kpi-card strong{font-size:21px}
+  .dashboard-kpi-card.kpi-gold strong{font-size:16px}
+  .dashboard-kpi-card em{font-size:10px}
+  .stats-grid .stat-top{font-size:11px}
+  .stats-grid .stat-card strong{font-size:27px}
+  .stats-grid .stat-card small{font-size:10px}
+  .section-heading h2,.panel-head h3{font-size:16px}
+}

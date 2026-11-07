@@ -1,0 +1,9 @@
+name = "codelfa-partners-preview-migrations"
+account_id = "af7b0acc01dab5ae2f2fa934e89560d6"
+compatibility_date = "2026-11-04"
+
+[[d1_databases]]
+binding = "PREVIEW_DB"
+database_name = "codelfa-partners-preview"
+database_id = "a5c2dcb6-f308-4a51-95ef-089453f98c54"
+migrations_dir = "migrations"

@@ -119,13 +119,13 @@ export default function Home(){
     ? {home:"الرئيسية",orders:"الأوردرات",shipments:"الشحنات والحاويات",purchases:"المشتريات",sales:"المبيعات",invoices:"سجل الفواتير",china:"دفعات الصين",finance:"الدفعات والشيكات",parties:"الموردون والعملاء",statements:"كشوف الحسابات",reports:"التقارير والطباعة",notes:"الملاحظات والتعليقات",team:"إدارة المساحة",refresh:"تحديث",empty:"لا توجد بيانات مسجلة بعد",add:"إضافة",readOnly:"مشاهدة وتعليق فقط"}
     : {home:"Overview",orders:"Orders",shipments:"Shipments & Containers",purchases:"Purchases",sales:"Sales",invoices:"Invoice register",china:"China remittances",finance:"Payments & Cheques",parties:"Suppliers & Customers",statements:"Statements",reports:"Reports & Printing",notes:"Notes & Comments",team:"Workspace admin",refresh:"Refresh",empty:"No records yet",add:"Add",readOnly:"View and comment only"};
   const sections: {id:Section;label:string;icon:string}[]=[
-    {id:"overview",label:labels.home,icon:"⌂"},{id:"orders",label:labels.orders,icon:"▦"},{id:"shipments",label:labels.shipments,icon:"▤"},
-    {id:"purchases",label:labels.purchases,icon:"＋"},{id:"sales",label:labels.sales,icon:"↗"},
-    {id:"invoices",label:labels.invoices,icon:"▧"},{id:"china",label:labels.china,icon:"⇢"},
-    {id:"finance",label:labels.finance,icon:"⇄"},{id:"parties",label:labels.parties,icon:"♙"},
-    {id:"statements",label:labels.statements,icon:"≡"},{id:"reports",label:labels.reports,icon:"▥"},
-    {id:"notes",label:labels.notes,icon:"✎"},
-    ...(isOwner?[{id:"team" as Section,label:labels.team,icon:"⚙"}]:[])
+    {id:"overview",label:labels.home,icon:"🏠"},{id:"orders",label:labels.orders,icon:"📦"},{id:"shipments",label:labels.shipments,icon:"🚢"},
+    {id:"purchases",label:labels.purchases,icon:"🛒"},{id:"sales",label:labels.sales,icon:"💹"},
+    {id:"invoices",label:labels.invoices,icon:"🧾"},{id:"china",label:labels.china,icon:"🇨🇳"},
+    {id:"finance",label:labels.finance,icon:"💳"},{id:"parties",label:labels.parties,icon:"🤝"},
+    {id:"statements",label:labels.statements,icon:"📑"},{id:"reports",label:labels.reports,icon:"📊"},
+    {id:"notes",label:labels.notes,icon:"📝"},
+    ...(isOwner?[{id:"team" as Section,label:labels.team,icon:"⚙️"}]:[])
   ];
   const title=sections.find(s=>s.id===section)?.label||labels.home;
 
@@ -503,14 +503,14 @@ export default function Home(){
         <section className="dashboard-kpis">
           <div className="dashboard-kpis-heading"><div><span className="eyebrow">BUSINESS SNAPSHOT</span><h2>مؤشرات العمل</h2><p>ملخص سريع للأرصدة والأوردرات وحركة الحاويات</p></div><button className="text-link" onClick={()=>void loadData()}>{labels.refresh} ↻</button></div>
           <div className="dashboard-kpi-grid">
-            <button className="dashboard-kpi-card kpi-gold" onClick={()=>setSection("china")}><span className="dashboard-kpi-icon">¥</span><small>المتبقي للصين</small><strong>{currencies.filter(c=>invoices.some(i=>i.invoice_type==="purchase"&&i.currency===c&&i.status!=="cancelled")).map(c=>{const due=invoices.filter(i=>i.invoice_type==="purchase"&&i.currency===c&&i.status!=="cancelled").reduce((n,i)=>n+Math.max(i.total_minor-(i.paid_minor||0),0),0);return due>0?money(due,c):null;}).filter(Boolean).join(" · ")||"لا يوجد متبقي"}</strong><em>حسب فواتير الشراء</em></button>
-            <button className="dashboard-kpi-card kpi-teal" onClick={()=>setSection("china")}><span className="dashboard-kpi-icon">↗</span><small>حوالات الصين</small><strong>{chinaTotals.length?chinaTotals.map(x=>money(x.transferred,x.currency)).join(" · "):"—"}</strong><em>{chinaRemittances.length} حوالة مسجلة</em></button>
-            <button className="dashboard-kpi-card kpi-purple" onClick={()=>setSection("shipments")}><span className="dashboard-kpi-icon">▤</span><small>إجمالي الشحنات</small><strong>{shipments.length}</strong><em>حاوية مسجلة</em></button>
-            <button className="dashboard-kpi-card kpi-blue" onClick={()=>setSection("shipments")}><span className="dashboard-kpi-icon">⇢</span><small>الشحنات بالطريق</small><strong>{shipments.filter(s=>["booked","loaded","departed","in_transit"].includes(s.status)).length}</strong><em>محجوزة أو غادرت أو قيد النقل</em></button>
-            <button className="dashboard-kpi-card kpi-green" onClick={()=>setSection("shipments")}><span className="dashboard-kpi-icon">✓</span><small>وصلت / تم استلامها</small><strong>{shipments.filter(s=>["arrived","customs_clearance","released","received","closed"].includes(s.status)).length}</strong><em>في الميناء أو المستودع</em></button>
-            <button className="dashboard-kpi-card kpi-purple" onClick={()=>setSection("orders")}><span className="dashboard-kpi-icon">▦</span><small>الأوردرات النشطة</small><strong>{orders.filter(o=>!["completed","cancelled"].includes(o.status)).length}</strong><em>مفتوحة أو قيد التنفيذ</em></button>
-            <button className="dashboard-kpi-card kpi-red" onClick={()=>setSection("purchases")}><span className="dashboard-kpi-icon">↓</span><small>فواتير شراء غير مسددة</small><strong>{invoices.filter(i=>i.invoice_type==="purchase"&&i.status!=="cancelled"&&(i.paid_minor||0)<i.total_minor).length}</strong><em>تحتاج متابعة السداد</em></button>
-            <button className="dashboard-kpi-card kpi-blue" onClick={()=>setSection("sales")}><span className="dashboard-kpi-icon">↑</span><small>فواتير المبيعات</small><strong>{invoices.filter(i=>i.invoice_type==="sale"&&i.status!=="cancelled").length}</strong><em>إجمالي الفواتير المسجلة</em></button>
+            <button className="dashboard-kpi-card kpi-gold" onClick={()=>setSection("china")}><span className="dashboard-kpi-icon" aria-hidden="true">💴</span><small>المتبقي للصين</small><strong>{currencies.filter(c=>invoices.some(i=>i.invoice_type==="purchase"&&i.currency===c&&i.status!=="cancelled")).map(c=>{const due=invoices.filter(i=>i.invoice_type==="purchase"&&i.currency===c&&i.status!=="cancelled").reduce((n,i)=>n+Math.max(i.total_minor-(i.paid_minor||0),0),0);return due>0?money(due,c):null;}).filter(Boolean).join(" · ")||"لا يوجد متبقي"}</strong><em>حسب فواتير الشراء</em></button>
+            <button className="dashboard-kpi-card kpi-teal" onClick={()=>setSection("china")}><span className="dashboard-kpi-icon" aria-hidden="true">💸</span><small>حوالات الصين</small><strong>{chinaTotals.length?chinaTotals.map(x=>money(x.transferred,x.currency)).join(" · "):"—"}</strong><em>{chinaRemittances.length} حوالة مسجلة</em></button>
+            <button className="dashboard-kpi-card kpi-purple" onClick={()=>setSection("shipments")}><span className="dashboard-kpi-icon" aria-hidden="true">🚢</span><small>إجمالي الشحنات</small><strong>{shipments.length}</strong><em>حاوية مسجلة</em></button>
+            <button className="dashboard-kpi-card kpi-blue" onClick={()=>setSection("shipments")}><span className="dashboard-kpi-icon" aria-hidden="true">🚚</span><small>الشحنات بالطريق</small><strong>{shipments.filter(s=>["booked","loaded","departed","in_transit"].includes(s.status)).length}</strong><em>محجوزة أو غادرت أو قيد النقل</em></button>
+            <button className="dashboard-kpi-card kpi-green" onClick={()=>setSection("shipments")}><span className="dashboard-kpi-icon" aria-hidden="true">📍</span><small>وصلت / تم استلامها</small><strong>{shipments.filter(s=>["arrived","customs_clearance","released","received","closed"].includes(s.status)).length}</strong><em>في الميناء أو المستودع</em></button>
+            <button className="dashboard-kpi-card kpi-purple" onClick={()=>setSection("orders")}><span className="dashboard-kpi-icon" aria-hidden="true">📦</span><small>الأوردرات النشطة</small><strong>{orders.filter(o=>!["completed","cancelled"].includes(o.status)).length}</strong><em>مفتوحة أو قيد التنفيذ</em></button>
+            <button className="dashboard-kpi-card kpi-red" onClick={()=>setSection("purchases")}><span className="dashboard-kpi-icon" aria-hidden="true">🧾</span><small>فواتير شراء غير مسددة</small><strong>{invoices.filter(i=>i.invoice_type==="purchase"&&i.status!=="cancelled"&&(i.paid_minor||0)<i.total_minor).length}</strong><em>تحتاج متابعة السداد</em></button>
+            <button className="dashboard-kpi-card kpi-blue" onClick={()=>setSection("sales")}><span className="dashboard-kpi-icon" aria-hidden="true">💰</span><small>فواتير المبيعات</small><strong>{invoices.filter(i=>i.invoice_type==="sale"&&i.status!=="cancelled").length}</strong><em>إجمالي الفواتير المسجلة</em></button>
           </div>
         </section>
         <section className="shipment-home-section">
@@ -584,7 +584,7 @@ export default function Home(){
     </div>;
 }
 
-function Stat({label,value,note}:{label:string;value:string;note:string}){return <div className="stat-card"><div className="stat-top"><span>{label}</span><i>◈</i></div><strong>{value}</strong><small>{note}</small></div>}
+function Stat({label,value,note}:{label:string;value:string;note:string}){const icons:Record<string,string>={"الأوردرات":"📦","الحاويات النشطة":"🚢","الفواتير":"🧾","الحركات المالية":"💳","جهات التعامل":"🤝"};return <div className="stat-card"><div className="stat-top"><span>{label}</span><i aria-hidden="true">{icons[label]||"📌"}</i></div><strong>{value}</strong><small>{note}</small></div>}
 function Empty({text}:{text:string}){return <div className="empty-row">{text}</div>}
 function ShipmentTable({rows,detailed=false,compact=false,isOwner=false,onEdit,onArchive,onBudget,onUpload,documents=[],photos=[],onPhotos}:{rows:Shipment[];detailed?:boolean;compact?:boolean;isOwner?:boolean;onEdit?:(s:Shipment)=>void;onArchive?:(id:string)=>void;onBudget?:(id:string)=>void;onUpload?:(id:string)=>void;documents?:DocumentItem[];photos?:ShipmentPhoto[];onPhotos?:(s:Shipment)=>void}){
   const photoStages=["loaded","departed","in_transit","arrived","customs_clearance","released","received","closed"];
